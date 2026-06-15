@@ -33,9 +33,13 @@ Before integrating anything, answer the one question: is Estonian STT good enoug
 If yes → proceed to integration, you've de-risked the project. If Estonian STT mangles names/times → that's your signal: pivot the demo to the **text/WhatsApp** booking fallback (same backend, same tools, no live voice). Either way you have a real answer and a real demo.
 
 ## Saturday afternoon: deploy the backend
-1. Push this repo to GitHub.
-2. Deploy to Railway, Render, or Fly (any gives you a public HTTPS URL fast). `npm install` then `node src/server.js`; it listens on `$PORT`.
-3. Confirm `https://YOUR_BACKEND/` shows the dashboard and the tool endpoints respond (see test commands below).
+1. Push this repo to GitHub (remote already set: `github.com/mihkel777/aino`).
+2. Deploy to any one of these — config is already in the repo, so it's ~one click:
+   - **Render**: New > Blueprint, point at the repo (`render.yaml` is detected). Or New > Web Service: build `npm ci`, start `npm start`.
+   - **Railway**: New Project > Deploy from GitHub repo (`Procfile` is detected → `npm start`).
+   - **Fly**: `fly launch` (uses the `Dockerfile`), then `fly deploy`.
+   The server listens on `$PORT`, which every platform injects automatically.
+3. Confirm `https://YOUR_BACKEND/` shows the dashboard and the tool endpoints respond — re-run the test commands below against the public URL (swap `localhost:8080` for it).
 
 ## Saturday evening: wire the tools into Vapi
 1. In `vapi-assistant.js`, replace both `https://YOUR_BACKEND/...` URLs with your deployed URL.

@@ -36,26 +36,61 @@ function normaliseDate(d) {
   return null; // force the model to send ISO dates; we tell it to in the prompt
 }
 
-function ok(res, payload) {
-  // Vapi expects tool results back; keep them short and model-friendly.
+// The id Vapi assigns to a tool call; we must echo it back so Vapi can match the
+// result to the call. Vapi sends it on both toolCalls[] and the flattened
+// toolCallList[]. Absent on the bare-body local curl tests -> null.
+function toolCallId(req) {
+  return (
+    req.body?.message?.toolCalls?.[0]?.id ??
+    req.body?.message?.toolCallList?.[0]?.id ??
+    null
+  );
+}
+
+function ok(res, id, payload) {
+  // Vapi requires { results: [{ toolCallId, result }] } and ignores anything else.
+  // For the local curl tests (no tool call id) keep a readable { result } body.
+  if (id) return res.json({ results: [{ toolCallId: id, result: payload }] });
   return res.json({ result: payload });
+}
+
+// Extract the tool arguments regardless of shape. Vapi sends both toolCalls[]
+// (OpenAI-style; `function.arguments` may be a JSON-encoded string) and the
+// flattened toolCallList[] (`arguments` already a parsed object); we also accept
+// a bare body for the local curl tests. Handle all of them.
+function toolArgs(req) {
+  let raw =
+    req.body?.message?.toolCalls?.[0]?.function?.arguments ??
+    req.body?.message?.toolCallList?.[0]?.arguments ??
+    req.body ??
+    {};
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return raw && typeof raw === "object" ? raw : {};
 }
 
 // ---- tool: check availability -------------------------------------------
 
 app.post("/tools/check-availability", (req, res) => {
-  const args = req.body?.message?.toolCalls?.[0]?.function?.arguments || req.body || {};
+  const id = toolCallId(req);
+  const args = toolArgs(req);
   const date = normaliseDate(args.date);
   const time = normaliseTime(args.time);
   const partySize = parseInt(args.partySize ?? args.party_size, 10);
 
   if (!date || !time || !Number.isFinite(partySize)) {
-    return ok(res, "Vajan broneeringuks kuupäeva (YYYY-MM-DD), kellaaega ja inimeste arvu.");
+    return ok(res, id, "Vajan broneeringuks kuupäeva (YYYY-MM-DD), kellaaega ja inimeste arvu.");
   }
 
   if (partySize > restaurant.maxPartySize) {
     return ok(
       res,
+      id,
       `Suuremate seltskondade jaoks kui ${restaurant.maxPartySize} inimest palun broneerige meie kodulehel. Kas saan aidata väiksema lauaga?`
     );
   }
@@ -64,6 +99,7 @@ app.post("/tools/check-availability", (req, res) => {
     const hrs = openingHoursFor(date);
     return ok(
       res,
+      id,
       hrs
         ? `Sel ajal oleme suletud. Sel päeval oleme avatud ${hrs.open} kuni ${hrs.close}.`
         : `Sel päeval oleme suletud.`
@@ -73,12 +109,12 @@ app.post("/tools/check-availability", (req, res) => {
   const taken = store.countSeatsAt(date, time);
   const free = restaurant.capacity - taken;
   if (free >= partySize) {
-    return ok(res, { available: true, date, time, partySize });
+    return ok(res, id, { available: true, date, time, partySize });
   }
 
   // Offer the nearest alternatives so the agent can keep the conversation moving.
   const alts = store.nearbyFreeSlots(date, time, partySize, restaurant);
-  return ok(res, {
+  return ok(res, id, {
     available: false,
     date,
     time,
@@ -89,7 +125,8 @@ app.post("/tools/check-availability", (req, res) => {
 // ---- tool: book table ----------------------------------------------------
 
 app.post("/tools/book-table", (req, res) => {
-  const args = req.body?.message?.toolCalls?.[0]?.function?.arguments || req.body || {};
+  const id = toolCallId(req);
+  const args = toolArgs(req);
   const date = normaliseDate(args.date);
   const time = normaliseTime(args.time);
   const partySize = parseInt(args.partySize ?? args.party_size, 10);
@@ -97,18 +134,18 @@ app.post("/tools/book-table", (req, res) => {
   const phone = (args.phone || "").toString().trim();
 
   if (!date || !time || !Number.isFinite(partySize) || !name) {
-    return ok(res, "Broneeringuks vajan kuupäeva, kellaaega, inimeste arvu ja nime.");
+    return ok(res, id, "Broneeringuks vajan kuupäeva, kellaaega, inimeste arvu ja nime.");
   }
 
   // Re-check capacity at write time (the slot may have filled mid-call).
   const taken = store.countSeatsAt(date, time);
   if (restaurant.capacity - taken < partySize) {
     const alts = store.nearbyFreeSlots(date, time, partySize, restaurant);
-    return ok(res, { booked: false, reason: "full", alternatives: alts });
+    return ok(res, id, { booked: false, reason: "full", alternatives: alts });
   }
 
   const booking = store.addBooking({ date, time, partySize, name, phone });
-  return ok(res, {
+  return ok(res, id, {
     booked: true,
     confirmation: booking.id,
     date,

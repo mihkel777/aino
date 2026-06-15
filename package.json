@@ -1,0 +1,17 @@
+{
+  "name": "aino",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aino voice agent backend — Estonian-first restaurant table booking (Vapi tools + live dashboard).",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

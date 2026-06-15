@@ -1,0 +1,10 @@
+# Render blueprint. In Render: New > Blueprint, point at this repo, deploy.
+# Render sets $PORT automatically; server.js reads it.
+services:
+  - type: web
+    name: aino
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    autoDeploy: true
