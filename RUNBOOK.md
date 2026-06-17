@@ -46,6 +46,17 @@ If yes → proceed to integration, you've de-risked the project. If Estonian STT
 2. Register the two tools in your Vapi assistant (function calling), pointing at those endpoints.
 3. Call the number again and run a full booking. Watch the dashboard at `/` — the booking should appear within seconds.
 
+## Share the demo: one link for the organiser (no phone number needed)
+A web-call link beats a phone number here — free Vapi numbers are US-only (expensive to call from Estonia) and an Estonian +372 number needs slow KYC. Instead, send `https://YOUR_BACKEND/demo`: the organiser taps a button, talks to Aino in Estonian in their browser, and watches the booking appear on the embedded live dashboard.
+1. In the Vapi dashboard, copy the assistant's **Public Key** and **Assistant ID**.
+2. On your host (Render → Environment), set `VAPI_PUBLIC_KEY` and `VAPI_ASSISTANT_ID`, then redeploy.
+3. Open `https://YOUR_BACKEND/demo` yourself, allow the mic, and book a table in Estonian — confirm it lands in the panel within seconds. Then send the link.
+
+Watch out:
+- A public link spends your Vapi minutes — top up credits before sharing, and pull the link after the decision.
+- Render's free tier sleeps (~30–60s cold start); open `/demo` once to wake it right before sending.
+- The in-memory store resets on redeploy — don't redeploy while the organiser is trying it.
+
 ## Sunday: make the call experience excellent
 Iterate on the system prompt against real calls. Test the hard cases from the kill-test script:
 - Estonian name spoken aloud ("Jüri Õunapuu", "Kärt Müür")

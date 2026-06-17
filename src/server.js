@@ -155,6 +155,58 @@ app.post("/tools/book-table", (req, res) => {
   });
 });
 
+// ---- shareable demo page (talk to Aino in the browser) ------------------
+// One URL to hand an organiser: tap to talk in Estonian, watch the booking
+// land on the live dashboard (embedded below). Uses Vapi's web widget, which
+// needs the assistant's public key + id (both safe client-side) from env.
+
+app.get("/demo", (_req, res) => {
+  const publicKey = process.env.VAPI_PUBLIC_KEY;
+  const assistantId = process.env.VAPI_ASSISTANT_ID;
+
+  const head = `<!doctype html><html lang="et"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${restaurant.name} · Räägi Ainoga</title>
+  <style>
+    body{font-family:system-ui,sans-serif;background:#0f1f33;color:#eaf0f7;margin:0;padding:2rem;line-height:1.5;}
+    h1{font-weight:700;margin:0 0 .25rem;} .sub{color:#9fb3cc;margin:0 0 1.5rem;}
+    .card{background:#17304d;border-radius:12px;padding:1.5rem;max-width:760px;margin:0 auto 1.5rem;}
+    ol{margin:.5rem 0 0;padding-left:1.2rem;} li{margin:.35rem 0;}
+    .hint{color:#9fb3cc;font-size:.95rem;}
+    .panel{max-width:760px;margin:0 auto;}
+    iframe{width:100%;height:340px;border:0;border-radius:12px;background:#0f1f33;}
+    .notice{background:#5a2a2a;color:#ffd9d9;border-radius:10px;padding:1rem 1.25rem;max-width:760px;margin:0 auto;}
+    code{background:#0f1f33;padding:.1rem .4rem;border-radius:5px;}
+  </style></head><body>
+  <div class="card">
+    <h1>${restaurant.name}</h1>
+    <p class="sub">Räägi Ainoga, meie virtuaalse assistendiga — broneeri laud eesti keeles.</p>`;
+
+  if (!publicKey || !assistantId) {
+    return res.send(`${head}
+      <div class="notice">
+        Demo pole veel seadistatud. Määra serveris keskkonnamuutujad
+        <code>VAPI_PUBLIC_KEY</code> ja <code>VAPI_ASSISTANT_ID</code>
+        (Vapi → Assistant → Public Key ja Assistant ID) ning käivita uuesti.
+      </div></div></body></html>`);
+  }
+
+  res.send(`${head}
+    <ol>
+      <li>Vajuta nupule ja <b>luba mikrofoni kasutamine</b>.</li>
+      <li>Räägi eesti keeles, näiteks: <i>"Sooviksin broneerida laua neljale reedeks kella seitsmeks."</i></li>
+      <li>Vaata, kuidas broneering ilmub allolevasse tabelisse mõne sekundiga.</li>
+    </ol>
+    <p class="hint">Toimib telefonis ja arvutis. Vajab mikrofoni ja interneti­ühendust.</p>
+  </div>
+  <div class="panel">
+    <iframe src="/" title="Broneeringud reaalajas"></iframe>
+  </div>
+  <script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"></script>
+  <vapi-widget public-key="${publicKey}" assistant-id="${assistantId}" mode="voice"></vapi-widget>
+  </body></html>`);
+});
+
 // ---- live dashboard (for the demo) --------------------------------------
 
 app.get("/", (_req, res) => {
