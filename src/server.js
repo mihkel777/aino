@@ -261,7 +261,21 @@ app.get("/", (_req, res) => {
     .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.8rem;}
     .statc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.25rem;}
     .statc .v{font-family:'Fraunces',serif;font-size:1.9rem;line-height:1;}
+    .statc .v.status-v{font-family:'Inter',sans-serif;font-size:1.05rem;font-weight:500;display:flex;align-items:center;gap:.5rem;padding:.35rem 0;}
+    .statc .sdot{width:.6rem;height:.6rem;border-radius:50%;flex:none;background:${ready ? "#7fcf9f" : "var(--muted)"};box-shadow:${ready ? "0 0 0 4px rgba(127,207,159,.15)" : "none"};}
     .statc .l{color:var(--muted);font-size:.82rem;margin-top:.45rem;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:.4rem 1.25rem;}
+    .card-title{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:1.1rem 0 .2rem;}
+    .hours-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 1.5rem;}
+    .hrow{display:flex;justify-content:space-between;gap:1rem;padding:.6rem 0;border-bottom:1px solid var(--line);}
+    .hrow .hday{color:var(--muted);}
+    .hrow .hval{color:var(--text);font-variant-numeric:tabular-nums;}
+    .hrow .hval.closed{color:var(--muted);font-style:italic;}
+    .hint{color:var(--muted);font-size:.8rem;margin:.4rem 0 0;}
+    .miccard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:1.4rem;margin-top:1.6rem;}
+    .mic-viz{display:flex;align-items:flex-end;gap:4px;height:64px;margin:1.1rem 0 .4rem;}
+    .mic-viz .bar{flex:1;background:var(--gold);border-radius:3px;height:100%;transform:scaleY(.06);transform-origin:bottom;transition:transform .08s linear;}
+    .mic-on{color:#7fcf9f;}
     .field{margin-bottom:1.2rem;}
     .lbl{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.45rem;}
     input[type=text],input[type=number],input[type=time],select{background:#0c0d0b;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:.6rem .75rem;font:inherit;font-size:.95rem;max-width:100%;}
@@ -308,10 +322,16 @@ app.get("/", (_req, res) => {
         <div class="cards">
           <div class="statc"><div class="v" id="stat-today">${todayCount}</div><div class="l">Broneeringut täna</div></div>
           <div class="statc"><div class="v" id="stat-total">${bookings.length}</div><div class="l">Broneeringut kokku</div></div>
-          <div class="statc"><div class="v">${restaurant.capacity}</div><div class="l">Kohta ajavahemikus</div></div>
-          <div class="statc"><div class="v">${ready ? "Ühendatud" : "—"}</div><div class="l">Assistent</div></div>
+          <div class="statc"><div class="v">${restaurant.capacity}</div><div class="l">Kohti korraga</div></div>
+          <div class="statc"><div class="v status-v"><span class="sdot"></span>${ready ? "Ühendatud" : "Seadistamata"}</div><div class="l">Assistent</div></div>
         </div>
-        <p class="lead">Lahtiolekuajad: ${esc(hoursSummary(restaurant))}.</p>
+        <p class="card-title">Lahtiolekuajad</p>
+        <div class="card hours-list">
+          ${DAYS.map(([d, label]) => {
+            const h = restaurant.hours[d];
+            return `<div class="hrow"><span class="hday">${label}</span><span class="hval${h ? "" : " closed"}">${h ? `${h.open}–${h.close}` : "Suletud"}</span></div>`;
+          }).join("")}
+        </div>
       </section>
 
       <section class="sec" id="sec-settings">
@@ -319,9 +339,9 @@ app.get("/", (_req, res) => {
         <p class="lead">Muuda restorani andmeid ja lahtiolekuaegu. Broneerimisreeglid rakenduvad kohe.</p>
         <div class="field"><label class="lbl">Restorani nimi</label><input type="text" id="f-name" value="${name}"></div>
         <div class="row2">
-          <div class="field"><label class="lbl">Kohti ajavahemikus</label><input type="number" id="f-capacity" min="1" value="${restaurant.capacity}"></div>
-          <div class="field"><label class="lbl">Maks. seltskond</label><input type="number" id="f-maxparty" min="1" value="${restaurant.maxPartySize}"></div>
-          <div class="field"><label class="lbl">Broneeringu samm</label><select id="f-slot">${slotOpts}</select></div>
+          <div class="field"><label class="lbl">Kohti korraga</label><input type="number" id="f-capacity" min="1" value="${restaurant.capacity}"><p class="hint">Mitu kohta saab ühe ajavahemiku jooksul broneerida.</p></div>
+          <div class="field"><label class="lbl">Maks. seltskond</label><input type="number" id="f-maxparty" min="1" value="${restaurant.maxPartySize}"><p class="hint">Suuremad seltskonnad suunatakse kodulehele.</p></div>
+          <div class="field"><label class="lbl">Broneeringu samm</label><select id="f-slot">${slotOpts}</select><p class="hint">Ajavahemike pikkus.</p></div>
         </div>
         <div class="field"><label class="lbl">Lahtiolekuajad</label>${dayRows}</div>
         <button class="btn" id="save">Salvesta</button>
@@ -337,6 +357,13 @@ app.get("/", (_req, res) => {
       <section class="sec" id="sec-test">
         <h1>Testi assistenti</h1>
         ${testInner}
+        <div class="miccard">
+          <label class="lbl">Sinu hääl</label>
+          <p class="hint" style="margin:0 0 .2rem">Kontrolli, kas mikrofon töötab — ribad peaksid rääkimisel liikuma.</p>
+          <div class="mic-viz" id="mic-viz" hidden>${Array.from({ length: 18 }).map(() => '<span class="bar"></span>').join("")}</div>
+          <p class="hint" id="mic-status"></p>
+          <button class="btn" id="mic-toggle" style="background:none;border:1px solid var(--line);color:var(--text)">Kontrolli mikrofoni</button>
+        </div>
       </section>
 
       <section class="sec" id="sec-bookings">
@@ -358,6 +385,7 @@ app.get("/", (_req, res) => {
       secs.forEach(function(s){s.classList.remove('active');});
       btn.classList.add('active');
       document.getElementById('sec-'+btn.dataset.sec).classList.add('active');
+      if(btn.dataset.sec!=='test'){stopMic();}
     });});
     document.querySelectorAll('.open-toggle').forEach(function(t){t.addEventListener('change',function(){
       var row=t.closest('.dayrow');var on=t.checked;
@@ -395,6 +423,41 @@ app.get("/", (_req, res) => {
     if(copyBtn){copyBtn.addEventListener('click',function(){
       var ta=document.getElementById('assistant-text');
       navigator.clipboard.writeText(ta.value).then(function(){toast('Tekst kopeeritud. Kleebi see Vapisse.',true);},function(){ta.select();toast('Vajuta Ctrl/Cmd+C, et kopeerida.',true);});
+    });}
+    var micStream=null,micCtx=null,micRAF=null;
+    function stopMic(){
+      if(micRAF){cancelAnimationFrame(micRAF);micRAF=null;}
+      if(micStream){micStream.getTracks().forEach(function(t){t.stop();});micStream=null;}
+      if(micCtx){micCtx.close();micCtx=null;}
+      var viz=document.getElementById('mic-viz');if(viz){viz.hidden=true;}
+      var mt=document.getElementById('mic-toggle');if(mt){mt.textContent='Kontrolli mikrofoni';mt.classList.remove('mic-on');}
+      var ms=document.getElementById('mic-status');if(ms){ms.textContent='';}
+    }
+    var micToggle=document.getElementById('mic-toggle');
+    if(micToggle){micToggle.addEventListener('click',function(){
+      if(micStream){stopMic();return;}
+      var ms=document.getElementById('mic-status');
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){if(ms){ms.textContent='Brauser ei toeta mikrofoni.';}return;}
+      navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
+        micStream=s;micToggle.textContent='Peata kontroll';micToggle.classList.add('mic-on');
+        if(ms){ms.textContent='Räägi — ribad liiguvad, kui hääl jõuab kohale.';}
+        var AC=window.AudioContext||window.webkitAudioContext;
+        micCtx=new AC();
+        var src=micCtx.createMediaStreamSource(s);
+        var an=micCtx.createAnalyser();an.fftSize=64;an.smoothingTimeConstant=0.7;src.connect(an);
+        var data=new Uint8Array(an.frequencyBinCount);
+        var viz=document.getElementById('mic-viz');if(viz){viz.hidden=false;}
+        var bars=document.querySelectorAll('#mic-viz .bar');
+        function tick(){
+          an.getByteFrequencyData(data);
+          for(var i=0;i<bars.length;i++){
+            var v=data[i]/255;
+            bars[i].style.transform='scaleY('+Math.max(0.06,Math.min(1,v*1.4)).toFixed(3)+')';
+          }
+          micRAF=requestAnimationFrame(tick);
+        }
+        tick();
+      }).catch(function(e){if(ms){ms.textContent='Mikrofoni ei saanud kasutada: '+e.message;}});
     });}
     var today=new Date().toISOString().slice(0,10);
     function loadRezv(){
