@@ -15,8 +15,7 @@ import {
   validateConfig,
   updateConfig,
 } from "./config.js";
-import { hoursSummary } from "./vapi-assistant.js";
-import { syncAssistant } from "./vapi-sync.js";
+import { hoursSummary, buildSystemPrompt, buildFirstMessage } from "./vapi-assistant.js";
 import { store } from "./store.js";
 
 const app = express();
@@ -182,15 +181,24 @@ app.get("/api/config", (_req, res) => {
   res.json(restaurant);
 });
 
-app.post("/api/config", async (req, res) => {
+app.post("/api/config", (req, res) => {
   try {
     validateConfig(req.body || {});
   } catch (e) {
     return res.status(400).json({ ok: false, error: e.message });
   }
   const config = updateConfig(req.body);
-  const vapi = await syncAssistant(config); // best-effort; never throws
-  res.json({ ok: true, config, vapi });
+  // Booking rules apply immediately (the tools read this config). The assistant's
+  // spoken prompt lives in Vapi; return the regenerated text for the manager to
+  // copy/paste there when they change the name — no API key held server-side.
+  res.json({
+    ok: true,
+    config,
+    assistant: {
+      systemPrompt: buildSystemPrompt(config),
+      firstMessage: buildFirstMessage(config),
+    },
+  });
 });
 
 // The earlier shareable demo link now lives inside the dashboard; keep it working.
@@ -214,6 +222,7 @@ app.get("/", (_req, res) => {
     return `<div class="dayrow" data-day="${d}"><span class="dayname">${label}</span><label class="sw"><input type="checkbox" class="open-toggle" ${open ? "checked" : ""}> Avatud</label><input type="time" class="open" value="${open ? h.open : "12:00"}" ${open ? "" : "disabled"}><span class="dash">–</span><input type="time" class="close" value="${open ? h.close : "22:00"}" ${open ? "" : "disabled"}></div>`;
   }).join("");
   const slotOpts = [15, 30, 60].map((m) => `<option value="${m}"${restaurant.slotMinutes === m ? " selected" : ""}>${m} min</option>`).join("");
+  const assistantText = esc(`${buildSystemPrompt(restaurant)}\n\n--- Esimene lause (First Message) ---\n${buildFirstMessage(restaurant)}`);
 
   const testInner = ready
     ? `<p class="lead">Proovi assistenti ise: vajuta paremas all nurgas <b>kõnenupule</b>, luba mikrofon ja räägi eesti keeles — näiteks <i>"Sooviksin broneerida laua neljale reedeks kella seitsmeks."</i> Broneering ilmub jaotisesse "Broneeringud".</p>`
@@ -307,7 +316,7 @@ app.get("/", (_req, res) => {
 
       <section class="sec" id="sec-settings">
         <h1>Seaded</h1>
-        <p class="lead">Muuda restorani andmeid ja lahtiolekuaegu. Salvestamisel uueneb broneerimisloogika ja assistent.</p>
+        <p class="lead">Muuda restorani andmeid ja lahtiolekuaegu. Broneerimisreeglid rakenduvad kohe.</p>
         <div class="field"><label class="lbl">Restorani nimi</label><input type="text" id="f-name" value="${name}"></div>
         <div class="row2">
           <div class="field"><label class="lbl">Kohti ajavahemikus</label><input type="number" id="f-capacity" min="1" value="${restaurant.capacity}"></div>
@@ -316,6 +325,13 @@ app.get("/", (_req, res) => {
         </div>
         <div class="field"><label class="lbl">Lahtiolekuajad</label>${dayRows}</div>
         <button class="btn" id="save">Salvesta</button>
+
+        <div class="field" style="margin-top:2.2rem">
+          <label class="lbl">Assistendi tekst (kleebi Vapisse)</label>
+          <p class="lead" style="margin:0 0 .6rem">Lahtiolekuajad ja kohad rakenduvad kohe. Kui muudad nime või tervitust, kopeeri allolev tekst ja kleebi see Vapi assistendi seadetesse (System Prompt + First Message).</p>
+          <textarea id="assistant-text" readonly rows="10" style="width:100%;background:#0c0d0b;border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:.75rem;font-family:ui-monospace,monospace;font-size:.82rem;line-height:1.5;">${assistantText}</textarea>
+          <button class="btn" id="copy-assistant" style="background:none;border:1px solid var(--line);color:var(--text)">Kopeeri tekst</button>
+        </div>
       </section>
 
       <section class="sec" id="sec-test">
@@ -365,15 +381,21 @@ app.get("/", (_req, res) => {
       .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
       .then(function(res){
         if(!res.ok){toast(res.d.error||'Salvestamine ebaõnnestus',false);return;}
-        var msg='Salvestatud.';
-        if(res.d.vapi&&res.d.vapi.synced){msg+=' Assistent uuendatud.';}
-        else if(res.d.vapi){msg+=' Assistenti ei uuendatud ('+res.d.vapi.reason+').';}
-        toast(msg,true);
+        toast('Salvestatud. Broneerimisreeglid kehtivad kohe.',true);
         document.querySelectorAll('.brand-rest').forEach(function(e){e.textContent=res.d.config.name;});
+        if(res.d.assistant){
+          var ta=document.getElementById('assistant-text');
+          if(ta){ta.value=res.d.assistant.systemPrompt+'\n\n--- Esimene lause (First Message) ---\n'+res.d.assistant.firstMessage;}
+        }
       })
       .catch(function(e){toast('Viga: '+e.message,false);})
       .then(function(){saveBtn.disabled=false;});
     });
+    var copyBtn=document.getElementById('copy-assistant');
+    if(copyBtn){copyBtn.addEventListener('click',function(){
+      var ta=document.getElementById('assistant-text');
+      navigator.clipboard.writeText(ta.value).then(function(){toast('Tekst kopeeritud. Kleebi see Vapisse.',true);},function(){ta.select();toast('Vajuta Ctrl/Cmd+C, et kopeerida.',true);});
+    });}
     var today=new Date().toISOString().slice(0,10);
     function loadRezv(){
       fetch('/api/bookings',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
