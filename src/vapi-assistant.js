@@ -10,16 +10,32 @@
 //   Booking truth lives in OUR backend, not in the model. The model gathers
 //   info and calls tools; the backend decides what is actually bookable.
 
-export const systemPrompt = `Sa oled restorani "Noa" virtuaalne assistent telefonis. Sa vastad klientide kõnedele ja aitad lauda broneerida.
+// Human-readable opening-hours summary (Monday-first) for the prompt.
+const DAY_ET = { 0: "P", 1: "E", 2: "T", 3: "K", 4: "N", 5: "R", 6: "L" };
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+export function hoursSummary(restaurant) {
+  return DAY_ORDER.map((d) => {
+    const h = restaurant.hours[d];
+    return `${DAY_ET[d]} ${h ? `${h.open}–${h.close}` : "suletud"}`;
+  }).join(", ");
+}
+
+// Build the system prompt from the current restaurant config. The manager's
+// dashboard settings (name, hours, max party size) flow into the live bot here.
+export function buildSystemPrompt(restaurant) {
+  return `Sa oled restorani "${restaurant.name}" virtuaalne assistent telefonis. Sa vastad klientide kõnedele ja aitad lauda broneerida.
 
 TERVITUS (KOHUSTUSLIK):
-- Alusta iga kõnet ühe lühikese lausega, milles ütled selgelt, et oled tehisintellekt. Näide: "Tere, siin Noa tehisintellekti-assistent — kuidas saan teid aidata?" (EL tehisintellekti määruse läbipaistvusnõue.)
+- Alusta iga kõnet ühe lühikese lausega, milles ütled selgelt, et oled tehisintellekt. Näide: "Tere, siin ${restaurant.name} tehisintellekti-assistent — kuidas saan teid aidata?" (EL tehisintellekti määruse läbipaistvusnõue.)
 
 ROLL JA TOON:
 - Räägi loomulikus, sõbralikus eesti keeles. Ole lühike ja selge, nagu hea administraator telefonis.
 - Vasta võimalikult lühidalt: tavaliselt üks lause. Küsi korraga ainult üht asja. Ära korda üle seda, mida pole vaja. (Lühike vastus = kiirem kõne.)
 
 SINU AINUS ÜLESANNE on lauabroneeringud ja restorani kohta käivad lihtsad küsimused (lahtiolekuajad, asukoht). Kõige muu puhul ütle viisakalt, et see ei kuulu sinu pädevusse, ja paku, et keegi võtab kliendiga ühendust.
+
+LAHTIOLEKUAJAD: ${hoursSummary(restaurant)}.
 
 BRONEERIMISE REEGLID:
 - Broneeringuks on sul vaja: kuupäev, kellaaeg, inimeste arv ja nimi.
@@ -40,9 +56,16 @@ KUI AEG POLE VABA:
 - Tööriist annab sulle lähimad vabad ajad. Paku need kliendile.
 
 KUI SELTSKOND ON SUUR:
-- Üle 8 inimese: ütle, et suuremad seltskonnad palun broneerigu kodulehel, ja paku abi väiksema lauaga.
+- Üle ${restaurant.maxPartySize} inimese: ütle, et suuremad seltskonnad palun broneerigu kodulehel, ja paku abi väiksema lauaga.
 
 Ära leiuta infot, mida sul pole. Kui sa midagi ei tea, ütle seda ausalt.`;
+}
+
+// First message the agent speaks when it picks up.
+// Discloses up front that the caller is talking to an AI (EU AI Act, Art. 50 transparency).
+export function buildFirstMessage(restaurant) {
+  return `Tere, siin ${restaurant.name} tehisintellekti-assistent — kuidas saan teid aidata?`;
+}
 
 // Tool definitions to register in Vapi (function calling).
 export const tools = [
@@ -85,8 +108,3 @@ export const tools = [
     server: { url: "https://YOUR_BACKEND/tools/book-table" },
   },
 ];
-
-// First message the agent speaks when it picks up.
-// Discloses up front that the caller is talking to an AI (EU AI Act, Art. 50 transparency).
-export const firstMessage =
-  "Tere, siin Noa tehisintellekti-assistent — kuidas saan teid aidata?";

@@ -1,14 +1,22 @@
-// Aino voice agent backend, restaurant table booking.
+// Aino backend + restaurant manager dashboard.
 // Exposes the tools the voice agent (Claude via Vapi) calls during a live call:
 //   POST /tools/check-availability
 //   POST /tools/book-table
-// Plus a tiny dashboard at GET / to watch bookings land live during the demo.
+// Plus the manager console at GET / (configure the bot, test-call it, watch
+// bookings) and a small JSON API (GET/POST /api/config, GET /api/bookings).
 //
-// Booking store: in-memory by default (zero setup), with a clean seam to swap in
-// Google Calendar (see calendar.js) so the organiser can watch an event appear.
+// Booking store: in-memory (resets on restart). Config persists to config.json.
 
 import express from "express";
-import { restaurant, openingHoursFor, slotIsWithinHours } from "./config.js";
+import {
+  restaurant,
+  openingHoursFor,
+  slotIsWithinHours,
+  validateConfig,
+  updateConfig,
+} from "./config.js";
+import { hoursSummary } from "./vapi-assistant.js";
+import { syncAssistant } from "./vapi-sync.js";
 import { store } from "./store.js";
 
 const app = express();
@@ -168,165 +176,220 @@ app.get("/api/bookings", (_req, res) => {
   res.json({ bookings: store.allBookings() });
 });
 
-// ---- shareable demo page (talk to Aino in the browser) ------------------
-// One URL to hand an organiser: tap to talk in Estonian, watch the booking
-// land on the live dashboard (embedded below). Uses Vapi's web widget, which
-// needs the assistant's public key + id (both safe client-side) from env.
+// ---- config API (manager dashboard reads/writes restaurant settings) ----
 
-app.get("/demo", (_req, res) => {
-  const publicKey = process.env.VAPI_PUBLIC_KEY;
-  const assistantId = process.env.VAPI_ASSISTANT_ID;
-
-  const head = `<!doctype html><html lang="et"><head><meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${restaurant.name} — broneeri laud</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    :root{--bg:#0c0d0b;--text:#ece7db;--muted:#9c968a;--gold:#c9a96a;--line:rgba(236,231,219,.10);--card:rgba(255,255,255,.035);}
-    *{box-sizing:border-box;}
-    html{scroll-behavior:smooth;}
-    body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
-    .glow{position:fixed;top:-32vh;left:50%;transform:translateX(-50%);width:120vw;height:80vh;background:radial-gradient(closest-side,rgba(201,169,106,.16),transparent 70%);pointer-events:none;z-index:0;}
-    .page{position:relative;z-index:1;max-width:860px;margin:0 auto;padding:clamp(3rem,8vw,6rem) 1.5rem 4rem;}
-    .badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(201,169,106,.10);color:var(--gold);border:1px solid rgba(201,169,106,.35);border-radius:999px;padding:.32rem .85rem;font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;}
-    .badge .d,.cta-hint .d,.live .d{width:.5rem;height:.5rem;border-radius:50%;background:var(--gold);animation:pulse 2.2s infinite;}
-    h1{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(3.4rem,13vw,6rem);line-height:.95;letter-spacing:-.02em;margin:1.3rem 0 0;}
-    .kicker{color:var(--gold);text-transform:uppercase;letter-spacing:.24em;font-size:.78rem;font-weight:600;margin:1rem 0 0;}
-    .lede{color:var(--muted);font-size:clamp(1.05rem,2.4vw,1.32rem);max-width:38ch;margin:1.1rem 0 0;}
-    .cta-hint{margin-top:1.8rem;font-size:.95rem;display:inline-flex;align-items:center;gap:.55rem;}
-    h2{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(1.6rem,4vw,2rem);letter-spacing:-.01em;margin:0 0 1.4rem;}
-    section{margin-top:clamp(3rem,7vw,4.5rem);}
-    .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
-    .step{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:1.4rem;transition:transform .25s ease,border-color .25s ease;}
-    .step:hover{transform:translateY(-4px);border-color:rgba(201,169,106,.4);}
-    .step .n{font-family:'Fraunces',serif;font-size:2rem;color:var(--gold);line-height:1;}
-    .step p{margin:.6rem 0 0;font-size:.98rem;}
-    .example{font-family:'Fraunces',serif;font-style:italic;font-size:clamp(1.5rem,4.2vw,2.2rem);line-height:1.32;text-align:center;border:0;margin:clamp(3rem,7vw,4.5rem) auto 0;max-width:24ch;padding:0 1rem;}
-    .example cite{display:block;font-family:'Inter',sans-serif;font-style:normal;font-size:.76rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:1.1rem;}
-    .rezv-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.4rem;}
-    .rezv-head h2{margin:0;}
-    .live{display:inline-flex;align-items:center;gap:.45rem;color:var(--gold);font-size:.72rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;}
-    .rezv{display:flex;flex-direction:column;gap:.6rem;}
-    .rez{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1rem 1.25rem;animation:rise .4s ease both;}
-    .rez-name{font-family:'Fraunces',serif;font-size:1.2rem;}
-    .rez-meta{color:var(--muted);font-size:.92rem;margin-top:.15rem;}
-    .rez-id{font-size:.7rem;color:var(--gold);border:1px solid rgba(201,169,106,.35);border-radius:999px;padding:.18rem .6rem;letter-spacing:.05em;white-space:nowrap;}
-    .empty{color:var(--muted);text-align:center;padding:2.5rem 1rem;border:1px dashed var(--line);border-radius:14px;font-style:italic;}
-    footer{margin-top:clamp(3rem,7vw,4.5rem);padding-top:1.5rem;border-top:1px solid var(--line);color:var(--muted);font-size:.8rem;display:flex;flex-wrap:wrap;gap:.4rem 1.5rem;}
-    .notice{background:rgba(201,120,90,.08);color:#e8c4b4;border:1px solid rgba(201,120,90,.35);border-radius:16px;padding:1.25rem 1.4rem;margin-top:1.5rem;}
-    code{background:rgba(255,255,255,.06);padding:.12rem .45rem;border-radius:6px;color:var(--gold);}
-    .reveal{opacity:0;transform:translateY(16px);animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards;}
-    @keyframes rise{to{opacity:1;transform:none;}}
-    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(201,169,106,.5);}70%{box-shadow:0 0 0 8px rgba(201,169,106,0);}100%{box-shadow:0 0 0 0 rgba(201,169,106,0);}}
-    @media(max-width:600px){.steps{grid-template-columns:1fr;}footer{flex-direction:column;}}
-    @media(prefers-reduced-motion:reduce){.reveal,.rez{animation:none;opacity:1;transform:none;}.badge .d,.cta-hint .d,.live .d{animation:none;}}
-  </style></head><body>
-  <div class="glow"></div>
-  <main class="page">
-    <span class="badge reveal"><span class="d"></span>Tehisintellekti assistent</span>
-    <h1 class="reveal" style="animation-delay:.05s">${restaurant.name}</h1>`;
-
-  if (!publicKey || !assistantId) {
-    return res.send(`${head}
-      <p class="lede reveal" style="animation-delay:.1s">Broneeri laud meie virtuaalse assistendiga.</p>
-      <div class="notice reveal" style="animation-delay:.15s">
-        Demo pole veel seadistatud. Määra serveris keskkonnamuutujad
-        <code>VAPI_PUBLIC_KEY</code> ja <code>VAPI_ASSISTANT_ID</code>
-        (Vapi → Assistant → Public Key ja Assistant ID) ning käivita uuesti.
-      </div></main></body></html>`);
-  }
-
-  res.send(`${head}
-    <p class="kicker reveal" style="animation-delay:.1s">Laudade broneerimine · häälega</p>
-    <p class="lede reveal" style="animation-delay:.15s">Broneeri laud meie virtuaalse assistendiga — räägi lihtsalt eesti keeles, nagu helistaksid restorani.</p>
-    <div class="cta-hint reveal" style="animation-delay:.2s"><span class="d"></span>Vajuta kõnenupule, et alustada</div>
-
-    <section class="reveal" style="animation-delay:.1s">
-      <h2>Kuidas broneerida</h2>
-      <div class="steps">
-        <div class="step"><div class="n">1</div><p>Vajuta kõnenupule ja luba mikrofon.</p></div>
-        <div class="step"><div class="n">2</div><p>Räägi eesti keeles, mida soovid broneerida.</p></div>
-        <div class="step"><div class="n">3</div><p>Vaata, kuidas broneering ilmub kohe nimekirja.</p></div>
-      </div>
-    </section>
-
-    <blockquote class="example reveal">"Sooviksin broneerida laua neljale reedeks kella seitsmeks."<cite>Proovi seda öelda</cite></blockquote>
-
-    <section class="reveal">
-      <div class="rezv-head"><h2>Broneeringud</h2><span class="live"><span class="d"></span>Reaalajas</span></div>
-      <div id="rezv" class="rezv"><div class="empty">Laen broneeringuid…</div></div>
-    </section>
-
-    <footer>
-      <span>Toimib telefonis ja arvutis</span>
-      <span>See on tehisintellekti assistent</span>
-      <span>Ehitatud Vapi + Claude peal</span>
-    </footer>
-  </main>
-  <script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"></script>
-  <vapi-widget public-key="${publicKey}" assistant-id="${assistantId}" mode="voice" theme="dark" accent-color="#c9a96a" title="${restaurant.name}" start-button-text="Räägi assistendiga"></vapi-widget>
-  <script>
-    function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-    async function loadRezv(){
-      try{
-        const r = await fetch('/api/bookings',{cache:'no-store'});
-        const d = await r.json();
-        const el = document.getElementById('rezv');
-        if(!el) return;
-        if(!d.bookings || !d.bookings.length){el.innerHTML='<div class="empty">Veel broneeringuid pole — tee esimene!</div>';return;}
-        el.innerHTML = d.bookings.map(function(b){
-          return '<div class="rez"><div><div class="rez-name">'+esc(b.name)+'</div><div class="rez-meta">'+esc(b.date)+' · '+esc(b.time)+' · '+esc(b.partySize)+' inimest</div></div><span class="rez-id">'+esc(b.id)+'</span></div>';
-        }).join('');
-      }catch(e){}
-    }
-    loadRezv(); setInterval(loadRezv,4000);
-  </script>
-  </body></html>`);
+app.get("/api/config", (_req, res) => {
+  res.json(restaurant);
 });
 
-// ---- live dashboard (for the demo) --------------------------------------
+app.post("/api/config", async (req, res) => {
+  try {
+    validateConfig(req.body || {});
+  } catch (e) {
+    return res.status(400).json({ ok: false, error: e.message });
+  }
+  const config = updateConfig(req.body);
+  const vapi = await syncAssistant(config); // best-effort; never throws
+  res.json({ ok: true, config, vapi });
+});
+
+// The earlier shareable demo link now lives inside the dashboard; keep it working.
+app.get("/demo", (_req, res) => res.redirect(302, "/"));
+
+// ---- manager dashboard (the product: configure, test, watch bookings) ---
 
 app.get("/", (_req, res) => {
   const bookings = store.allBookings();
-  const rows = bookings
-    .map(
-      (b) =>
-        `<div class="rez"><div><div class="rez-name">${esc(b.name)}</div><div class="rez-meta">${esc(b.date)} · ${esc(b.time)} · ${esc(b.partySize)} inimest</div></div><span class="rez-id">${esc(b.id)}</span></div>`
-    )
-    .join("");
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCount = bookings.filter((b) => b.date === today).length;
+  const publicKey = process.env.VAPI_PUBLIC_KEY;
+  const assistantId = process.env.VAPI_ASSISTANT_ID;
+  const ready = !!(publicKey && assistantId);
+  const name = esc(restaurant.name);
+
+  const DAYS = [[1, "Esmaspäev"], [2, "Teisipäev"], [3, "Kolmapäev"], [4, "Neljapäev"], [5, "Reede"], [6, "Laupäev"], [0, "Pühapäev"]];
+  const dayRows = DAYS.map(([d, label]) => {
+    const h = restaurant.hours[d];
+    const open = !!h;
+    return `<div class="dayrow" data-day="${d}"><span class="dayname">${label}</span><label class="sw"><input type="checkbox" class="open-toggle" ${open ? "checked" : ""}> Avatud</label><input type="time" class="open" value="${open ? h.open : "12:00"}" ${open ? "" : "disabled"}><span class="dash">–</span><input type="time" class="close" value="${open ? h.close : "22:00"}" ${open ? "" : "disabled"}></div>`;
+  }).join("");
+  const slotOpts = [15, 30, 60].map((m) => `<option value="${m}"${restaurant.slotMinutes === m ? " selected" : ""}>${m} min</option>`).join("");
+
+  const testInner = ready
+    ? `<p class="lead">Proovi assistenti ise: vajuta paremas all nurgas <b>kõnenupule</b>, luba mikrofon ja räägi eesti keeles — näiteks <i>"Sooviksin broneerida laua neljale reedeks kella seitsmeks."</i> Broneering ilmub jaotisesse "Broneeringud".</p>`
+    : `<div class="notice">Testimiseks määra serveris <code>VAPI_PUBLIC_KEY</code> ja <code>VAPI_ASSISTANT_ID</code>.</div>`;
+
+  const widget = ready
+    ? `<script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"></script><vapi-widget public-key="${esc(publicKey)}" assistant-id="${esc(assistantId)}" mode="voice" theme="dark" accent-color="#c9a96a" title="${name}" start-button-text="Räägi assistendiga"></vapi-widget>`
+    : "";
+
   res.send(`<!doctype html><html lang="et"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${restaurant.name} — broneeringud</title>
+  <title>${name} — juhtpaneel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    :root{--bg:#0c0d0b;--text:#ece7db;--muted:#9c968a;--gold:#c9a96a;--line:rgba(236,231,219,.10);--card:rgba(255,255,255,.035);}
+    :root{--bg:#0c0d0b;--panel:#121310;--text:#ece7db;--muted:#9c968a;--gold:#c9a96a;--line:rgba(236,231,219,.10);--card:rgba(255,255,255,.035);--err:#e6a07f;}
     *{box-sizing:border-box;}
-    body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:clamp(2rem,6vw,4rem) 1.5rem;-webkit-font-smoothing:antialiased;}
-    .wrap{max-width:680px;margin:0 auto;}
-    h1{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(2.2rem,7vw,3rem);margin:0 0 .35rem;letter-spacing:-.01em;}
-    .sub{color:var(--muted);font-size:.9rem;margin:0 0 2rem;display:flex;align-items:center;gap:.5rem;}
-    .sub .d{width:.5rem;height:.5rem;border-radius:50%;background:var(--gold);animation:pulse 1.8s infinite;}
+    body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+    .app{display:grid;grid-template-columns:248px 1fr;min-height:100vh;}
+    .side{background:var(--panel);border-right:1px solid var(--line);padding:1.6rem 1rem;display:flex;flex-direction:column;}
+    .brand{font-family:'Fraunces',serif;font-size:1.55rem;margin:.2rem .6rem .2rem;}
+    .brand-sub{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin:0 .7rem 1.4rem;}
+    .nav{display:flex;flex-direction:column;gap:.2rem;}
+    .nav button{display:block;width:100%;background:none;border:0;color:var(--muted);font:inherit;font-size:.96rem;text-align:left;padding:.62rem .8rem;border-radius:10px;cursor:pointer;transition:.15s;}
+    .nav button:hover{color:var(--text);background:var(--card);}
+    .nav button.active{color:var(--text);background:rgba(201,169,106,.13);}
+    .side .status{margin-top:auto;font-size:.76rem;color:var(--muted);padding:.7rem .7rem 0;border-top:1px solid var(--line);}
+    .status .dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${ready ? "#7fcf9f" : "var(--err)"};margin-right:.4rem;}
+    .main{padding:clamp(1.6rem,4vw,3rem);max-width:860px;}
+    h1{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(1.7rem,4vw,2.1rem);margin:0 0 .4rem;}
+    .lead{color:var(--muted);margin:0 0 1.8rem;line-height:1.6;}
+    .sec{display:none;}
+    .sec.active{display:block;animation:fade .35s ease;}
+    @keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.8rem;}
+    .statc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.25rem;}
+    .statc .v{font-family:'Fraunces',serif;font-size:1.9rem;line-height:1;}
+    .statc .l{color:var(--muted);font-size:.82rem;margin-top:.45rem;}
+    .field{margin-bottom:1.2rem;}
+    .lbl{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.45rem;}
+    input[type=text],input[type=number],input[type=time],select{background:#0c0d0b;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:.6rem .75rem;font:inherit;font-size:.95rem;max-width:100%;}
+    input:focus,select:focus{outline:none;border-color:var(--gold);}
+    input:disabled{opacity:.4;}
+    .row2{display:flex;gap:1rem;flex-wrap:wrap;}
+    .row2 .field{flex:1;min-width:140px;}
+    .dayrow{display:flex;align-items:center;gap:.75rem;padding:.55rem 0;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+    .dayrow .dayname{width:7rem;}
+    .dayrow .sw{display:inline-flex;align-items:center;gap:.4rem;color:var(--muted);font-size:.85rem;width:6.5rem;}
+    .dayrow .dash{color:var(--muted);}
+    .btn{background:var(--gold);color:#1a1407;border:0;border-radius:10px;padding:.75rem 1.5rem;font:inherit;font-weight:600;cursor:pointer;margin-top:.6rem;}
+    .btn:hover{filter:brightness(1.07);}
+    .btn:disabled{opacity:.6;cursor:default;}
     .rezv{display:flex;flex-direction:column;gap:.6rem;}
     .rez{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1rem 1.25rem;}
     .rez-name{font-family:'Fraunces',serif;font-size:1.2rem;}
     .rez-meta{color:var(--muted);font-size:.92rem;margin-top:.15rem;}
     .rez-id{font-size:.7rem;color:var(--gold);border:1px solid rgba(201,169,106,.35);border-radius:999px;padding:.18rem .6rem;white-space:nowrap;}
-    .empty{color:var(--muted);text-align:center;padding:3rem 1rem;border:1px dashed var(--line);border-radius:14px;font-style:italic;}
-    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(201,169,106,.5);}70%{box-shadow:0 0 0 8px rgba(201,169,106,0);}100%{box-shadow:0 0 0 0 rgba(201,169,106,0);}}
-  </style></head><body><div class="wrap">
-    <h1>${restaurant.name}</h1>
-    <p class="sub"><span class="d"></span>Broneeringud reaalajas · ${bookings.length} kokku</p>
-    ${
-      bookings.length === 0
-        ? `<div class="empty">Veel broneeringuid pole. Helista ja broneeri laud!</div>`
-        : `<div class="rezv">${rows}</div>`
-    }
+    .empty{color:var(--muted);text-align:center;padding:2.5rem 1rem;border:1px dashed var(--line);border-radius:14px;font-style:italic;}
+    .notice{background:rgba(201,120,90,.08);color:#e8c4b4;border:1px solid rgba(201,120,90,.35);border-radius:12px;padding:1rem 1.25rem;}
+    code{background:rgba(255,255,255,.06);padding:.1rem .4rem;border-radius:5px;color:var(--gold);}
+    .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(160%);background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--gold);padding:.85rem 1.25rem;border-radius:10px;transition:transform .3s ease;max-width:92vw;z-index:50;}
+    .toast.show{transform:translateX(-50%) translateY(0);}
+    .toast.err{border-left-color:var(--err);}
+    @media(max-width:720px){.app{grid-template-columns:1fr;}.side{flex-direction:column;}.nav{flex-direction:row;flex-wrap:wrap;}.side .status{display:none;}}
+  </style></head><body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand brand-rest">${name}</div>
+      <div class="brand-sub">Aino · juhtpaneel</div>
+      <nav class="nav">
+        <button class="active" data-sec="overview">Ülevaade</button>
+        <button data-sec="settings">Seaded</button>
+        <button data-sec="test">Testi assistenti</button>
+        <button data-sec="bookings">Broneeringud</button>
+      </nav>
+      <div class="status"><span class="dot"></span>${ready ? "Assistent ühendatud" : "Assistent seadistamata"}</div>
+    </aside>
+    <main class="main">
+      <section class="sec active" id="sec-overview">
+        <h1>Ülevaade</h1>
+        <p class="lead"><span class="brand-rest">${name}</span> broneerimisassistent.</p>
+        <div class="cards">
+          <div class="statc"><div class="v" id="stat-today">${todayCount}</div><div class="l">Broneeringut täna</div></div>
+          <div class="statc"><div class="v" id="stat-total">${bookings.length}</div><div class="l">Broneeringut kokku</div></div>
+          <div class="statc"><div class="v">${restaurant.capacity}</div><div class="l">Kohta ajavahemikus</div></div>
+          <div class="statc"><div class="v">${ready ? "Ühendatud" : "—"}</div><div class="l">Assistent</div></div>
+        </div>
+        <p class="lead">Lahtiolekuajad: ${esc(hoursSummary(restaurant))}.</p>
+      </section>
+
+      <section class="sec" id="sec-settings">
+        <h1>Seaded</h1>
+        <p class="lead">Muuda restorani andmeid ja lahtiolekuaegu. Salvestamisel uueneb broneerimisloogika ja assistent.</p>
+        <div class="field"><label class="lbl">Restorani nimi</label><input type="text" id="f-name" value="${name}"></div>
+        <div class="row2">
+          <div class="field"><label class="lbl">Kohti ajavahemikus</label><input type="number" id="f-capacity" min="1" value="${restaurant.capacity}"></div>
+          <div class="field"><label class="lbl">Maks. seltskond</label><input type="number" id="f-maxparty" min="1" value="${restaurant.maxPartySize}"></div>
+          <div class="field"><label class="lbl">Broneeringu samm</label><select id="f-slot">${slotOpts}</select></div>
+        </div>
+        <div class="field"><label class="lbl">Lahtiolekuajad</label>${dayRows}</div>
+        <button class="btn" id="save">Salvesta</button>
+      </section>
+
+      <section class="sec" id="sec-test">
+        <h1>Testi assistenti</h1>
+        ${testInner}
+      </section>
+
+      <section class="sec" id="sec-bookings">
+        <h1>Broneeringud</h1>
+        <p class="lead">Reaalajas — uueneb automaatselt.</p>
+        <div id="rezv" class="rezv"><div class="empty">Laen…</div></div>
+      </section>
+    </main>
   </div>
-  <script>setTimeout(function(){location.reload();},4000)</script>
+  <div class="toast" id="toast"></div>
+  ${widget}
+  <script>
+  (function(){
+    function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+    var navs=document.querySelectorAll('.nav button');
+    var secs=document.querySelectorAll('.sec');
+    navs.forEach(function(btn){btn.addEventListener('click',function(){
+      navs.forEach(function(b){b.classList.remove('active');});
+      secs.forEach(function(s){s.classList.remove('active');});
+      btn.classList.add('active');
+      document.getElementById('sec-'+btn.dataset.sec).classList.add('active');
+    });});
+    document.querySelectorAll('.open-toggle').forEach(function(t){t.addEventListener('change',function(){
+      var row=t.closest('.dayrow');var on=t.checked;
+      row.querySelector('.open').disabled=!on;row.querySelector('.close').disabled=!on;
+    });});
+    var toastEl=document.getElementById('toast');var tt;
+    function toast(msg,ok){toastEl.textContent=msg;toastEl.className='toast show'+(ok?'':' err');clearTimeout(tt);tt=setTimeout(function(){toastEl.className='toast'+(ok?'':' err');},6000);}
+    function collect(){
+      var hours={};
+      document.querySelectorAll('.dayrow').forEach(function(row){
+        var d=row.dataset.day;
+        if(!row.querySelector('.open-toggle').checked){hours[d]=null;}
+        else{hours[d]={open:row.querySelector('.open').value,close:row.querySelector('.close').value};}
+      });
+      return {name:document.getElementById('f-name').value,capacity:parseInt(document.getElementById('f-capacity').value,10),maxPartySize:parseInt(document.getElementById('f-maxparty').value,10),slotMinutes:parseInt(document.getElementById('f-slot').value,10),hours:hours};
+    }
+    var saveBtn=document.getElementById('save');
+    saveBtn.addEventListener('click',function(){
+      saveBtn.disabled=true;
+      fetch('/api/config',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(collect())})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+      .then(function(res){
+        if(!res.ok){toast(res.d.error||'Salvestamine ebaõnnestus',false);return;}
+        var msg='Salvestatud.';
+        if(res.d.vapi&&res.d.vapi.synced){msg+=' Assistent uuendatud.';}
+        else if(res.d.vapi){msg+=' Assistenti ei uuendatud ('+res.d.vapi.reason+').';}
+        toast(msg,true);
+        document.querySelectorAll('.brand-rest').forEach(function(e){e.textContent=res.d.config.name;});
+      })
+      .catch(function(e){toast('Viga: '+e.message,false);})
+      .then(function(){saveBtn.disabled=false;});
+    });
+    var today=new Date().toISOString().slice(0,10);
+    function loadRezv(){
+      fetch('/api/bookings',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+        var list=d.bookings||[];
+        var el=document.getElementById('rezv');
+        if(el){
+          if(!list.length){el.innerHTML='<div class="empty">Veel broneeringuid pole.</div>';}
+          else{el.innerHTML=list.map(function(b){return '<div class="rez"><div><div class="rez-name">'+esc(b.name)+'</div><div class="rez-meta">'+esc(b.date)+' · '+esc(b.time)+' · '+esc(b.partySize)+' inimest</div></div><span class="rez-id">'+esc(b.id)+'</span></div>';}).join('');}
+        }
+        var st=document.getElementById('stat-total');if(st){st.textContent=list.length;}
+        var sd=document.getElementById('stat-today');if(sd){sd.textContent=list.filter(function(b){return b.date===today;}).length;}
+      }).catch(function(){});
+    }
+    loadRezv();setInterval(loadRezv,4000);
+  })();
+  </script>
   </body></html>`);
 });
 
