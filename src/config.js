@@ -2,7 +2,7 @@
 // In the real product this comes from each business's stored configuration.
 
 export const restaurant = {
-  name: "Restoran Kalevipoeg",
+  name: "Noa",
   capacity: 24, // total seats bookable per time slot
   maxPartySize: 8, // larger groups -> redirect to web form
   // Opening hours per weekday (0 = Sunday ... 6 = Saturday). null = closed.
