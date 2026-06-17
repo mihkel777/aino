@@ -224,17 +224,66 @@ app.get("/", (_req, res) => {
   const slotOpts = [15, 30, 60].map((m) => `<option value="${m}"${restaurant.slotMinutes === m ? " selected" : ""}>${m} min</option>`).join("");
   const assistantText = esc(`${buildSystemPrompt(restaurant)}\n\n--- Esimene lause (First Message) ---\n${buildFirstMessage(restaurant)}`);
 
+  const bars = Array.from({ length: 22 }).map(() => '<span class="bar"></span>').join("");
   const testInner = ready
-    ? `<p class="lead">Proovi assistenti ise: vajuta paremas all nurgas <b>kõnenupule</b>, luba mikrofon ja räägi eesti keeles — näiteks <i>"Sooviksin broneerida laua neljale reedeks kella seitsmeks."</i> Broneering ilmub jaotisesse "Broneeringud".</p>`
+    ? `<p class="lead">Proovi assistenti ise: vajuta <b>Alusta kõnet</b>, luba mikrofon ja räägi eesti keeles — näiteks <i>"Sooviksin broneerida laua neljale reedeks kella seitsmeks."</i> Broneering ilmub jaotisesse "Broneeringud".</p>
+        <div class="callpanel">
+          <div class="callhead"><span class="calltitle">${name}</span><span class="callstatus" id="call-status">Valmis</span></div>
+          <div class="vizrow"><span class="vizlbl">${name} hääl</span><div class="viz" id="asst-viz">${bars}</div></div>
+          <div class="vizrow"><span class="vizlbl">Sinu hääl</span><div class="viz user" id="user-viz">${bars}</div></div>
+          <button class="btn callbtn" id="call-btn">Alusta kõnet</button>
+          <p class="hint" id="call-msg"></p>
+        </div>`
     : `<div class="notice">Testimiseks määra serveris <code>VAPI_PUBLIC_KEY</code> ja <code>VAPI_ASSISTANT_ID</code>.</div>`;
 
-  const widget = ready
-    ? `<script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"></script><vapi-widget public-key="${esc(publicKey)}" assistant-id="${esc(assistantId)}" mode="voice" theme="dark" accent-color="#c9a96a" title="${name}" start-button-text="Räägi assistendiga"></vapi-widget>`
-    : "";
-
-  // Arrow pointing at the floating call button (shown only on the Test section).
-  const callHint = ready
-    ? `<div id="call-hint" class="call-hint" hidden aria-hidden="true"><span class="call-hint-txt">Alusta kõnet siit</span><svg class="call-hint-arrow" width="46" height="56" viewBox="0 0 46 56" fill="none"><path d="M8 4 C8 30, 34 26, 36 46" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/><path d="M27 42 L37 49 L41 37" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`
+  // Custom in-tab call UI on the Vapi Web SDK, so we can render both the
+  // assistant's and the caller's live waveforms (the floating widget can't).
+  const callScript = ready
+    ? `<script type="module">
+import Vapi from 'https://esm.sh/@vapi-ai/web';
+(function(){
+  var PUBLIC_KEY=${JSON.stringify(publicKey)},ASSIST=${JSON.stringify(assistantId)};
+  var vapi=null,active=false,starting=false,asstLevel=0,asstRAF=null;
+  var micStream=null,micCtx=null,micRAF=null;
+  var btn=document.getElementById('call-btn'),statusEl=document.getElementById('call-status'),msgEl=document.getElementById('call-msg');
+  var userBars=document.querySelectorAll('#user-viz .bar'),asstBars=document.querySelectorAll('#asst-viz .bar');
+  function setStatus(t,live){if(statusEl){statusEl.textContent=t;statusEl.className='callstatus'+(live?' live':'');}}
+  function resetBars(list){for(var i=0;i<list.length;i++){list[i].style.transform='scaleY(0.05)';}}
+  function startUserMeter(){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return;
+    navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
+      micStream=s;var AC=window.AudioContext||window.webkitAudioContext;micCtx=new AC();
+      var src=micCtx.createMediaStreamSource(s),an=micCtx.createAnalyser();an.fftSize=64;an.smoothingTimeConstant=0.7;src.connect(an);
+      var data=new Uint8Array(an.frequencyBinCount);
+      function tick(){an.getByteFrequencyData(data);for(var i=0;i<userBars.length;i++){var v=data[i]/255;userBars[i].style.transform='scaleY('+Math.max(0.05,Math.min(1,v*1.5)).toFixed(3)+')';}micRAF=requestAnimationFrame(tick);}
+      tick();
+    }).catch(function(e){if(msgEl){msgEl.textContent='Mikrofoni ei saanud: '+e.message;}});
+  }
+  function stopUserMeter(){if(micRAF){cancelAnimationFrame(micRAF);micRAF=null;}if(micStream){micStream.getTracks().forEach(function(t){t.stop();});micStream=null;}if(micCtx){micCtx.close();micCtx=null;}resetBars(userBars);}
+  function animateAsst(){var t=performance.now()/180;for(var i=0;i<asstBars.length;i++){var v=asstLevel*(0.45+0.55*Math.abs(Math.sin(t+i*0.5)));asstBars[i].style.transform='scaleY('+Math.max(0.05,Math.min(1,v)).toFixed(3)+')';}asstRAF=requestAnimationFrame(animateAsst);}
+  function cleanup(){active=false;starting=false;asstLevel=0;if(asstRAF){cancelAnimationFrame(asstRAF);asstRAF=null;}resetBars(asstBars);stopUserMeter();btn.textContent='Alusta kõnet';btn.classList.remove('ending');setStatus('Valmis',false);}
+  function ensureVapi(){
+    if(vapi)return;
+    vapi=new Vapi(PUBLIC_KEY);
+    vapi.on('call-start',function(){active=true;starting=false;setStatus('Kuulan sind',true);});
+    vapi.on('speech-start',function(){setStatus(${JSON.stringify(restaurant.name)}+' räägib',true);});
+    vapi.on('speech-end',function(){setStatus('Kuulan sind',true);});
+    vapi.on('volume-level',function(l){asstLevel=typeof l==='number'?l:0;});
+    vapi.on('call-end',function(){cleanup();});
+    vapi.on('error',function(e){if(msgEl){msgEl.textContent='Viga kõnes. Proovi uuesti.';}cleanup();});
+  }
+  function start(){
+    if(active||starting)return;
+    if(msgEl){msgEl.textContent='';}
+    starting=true;btn.textContent='Lõpeta kõne';btn.classList.add('ending');setStatus('Ühendan...',false);
+    try{ensureVapi();asstRAF=requestAnimationFrame(animateAsst);startUserMeter();var p=vapi.start(ASSIST);if(p&&p.catch){p.catch(function(e){if(msgEl){msgEl.textContent='Kõnet ei saanud alustada.';}cleanup();});}}
+    catch(e){if(msgEl){msgEl.textContent='Kõnet ei saanud alustada: '+e.message;}cleanup();}
+  }
+  function end(){if(vapi&&(active||starting)){try{vapi.stop();}catch(e){}}cleanup();}
+  if(btn){btn.addEventListener('click',function(){if(active||starting){end();}else{start();}});}
+  document.querySelectorAll('.nav button').forEach(function(b){b.addEventListener('click',function(){if(b.dataset.sec!=='test'){end();}});});
+})();
+</script>`
     : "";
 
   res.send(`<!doctype html><html lang="et"><head><meta charset="utf-8">
@@ -277,15 +326,18 @@ app.get("/", (_req, res) => {
     .hrow .hval{color:var(--text);font-variant-numeric:tabular-nums;}
     .hrow .hval.closed{color:var(--muted);font-style:italic;}
     .hint{color:var(--muted);font-size:.8rem;margin:.4rem 0 0;}
-    .miccard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:1.4rem;margin-top:1.6rem;}
-    .mic-viz{display:flex;align-items:flex-end;gap:4px;height:64px;margin:1.1rem 0 .4rem;}
-    .mic-viz .bar{flex:1;background:var(--gold);border-radius:3px;height:100%;transform:scaleY(.06);transform-origin:bottom;transition:transform .08s linear;}
-    .mic-on{color:#7fcf9f;}
-    .call-hint{position:fixed;right:7.5rem;bottom:5rem;z-index:40;display:flex;flex-direction:column;align-items:flex-start;gap:.1rem;color:var(--gold);pointer-events:none;animation:bob 1.7s ease-in-out infinite;}
-    .call-hint-txt{font-size:.92rem;font-weight:500;background:var(--panel);border:1px solid rgba(201,169,106,.4);padding:.4rem .8rem;border-radius:999px;white-space:nowrap;}
-    .call-hint-arrow{margin-left:1.2rem;}
-    @keyframes bob{0%,100%{transform:translate(0,0);}50%{transform:translate(6px,8px);}}
-    @media(max-width:720px){.call-hint{right:5.5rem;bottom:4.5rem;}}
+    .callpanel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:1.6rem;margin-top:1.4rem;max-width:560px;}
+    .callhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;}
+    .calltitle{font-family:'Fraunces',serif;font-size:1.4rem;}
+    .callstatus{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;}
+    .callstatus.live{color:#7fcf9f;}
+    .vizrow{display:flex;align-items:center;gap:1rem;margin:.6rem 0;}
+    .vizlbl{width:5.5rem;flex:none;font-size:.8rem;color:var(--muted);}
+    .viz{flex:1;display:flex;align-items:center;gap:3px;height:48px;}
+    .viz .bar{flex:1;background:var(--gold);border-radius:3px;height:100%;transform:scaleY(.05);transform-origin:center;transition:transform .07s linear;opacity:.9;}
+    .viz.user .bar{background:#8fcaff;}
+    .callbtn{margin-top:1.2rem;}
+    .callbtn.ending{background:var(--err);color:#2a0f0a;}
     .field{margin-bottom:1.2rem;}
     .lbl{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.45rem;}
     input[type=text],input[type=number],input[type=time],select{background:#0c0d0b;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:.6rem .75rem;font:inherit;font-size:.95rem;max-width:100%;}
@@ -367,13 +419,6 @@ app.get("/", (_req, res) => {
       <section class="sec" id="sec-test">
         <h1>Testi assistenti</h1>
         ${testInner}
-        <div class="miccard">
-          <label class="lbl">Sinu hääl — reaalajas</label>
-          <p class="hint" style="margin:0 0 .2rem">Kõne ajal liiguvad ribad, kui su hääl jõuab kohale. Aktiveerub sellel lehel automaatselt.</p>
-          <div class="mic-viz" id="mic-viz" hidden>${Array.from({ length: 18 }).map(() => '<span class="bar"></span>').join("")}</div>
-          <p class="hint" id="mic-status"></p>
-          <button class="btn" id="mic-toggle" style="background:none;border:1px solid var(--line);color:var(--text)">Peata</button>
-        </div>
       </section>
 
       <section class="sec" id="sec-bookings">
@@ -384,8 +429,6 @@ app.get("/", (_req, res) => {
     </main>
   </div>
   <div class="toast" id="toast"></div>
-  ${callHint}
-  ${widget}
   <script>
   (function(){
     function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -396,7 +439,6 @@ app.get("/", (_req, res) => {
       secs.forEach(function(s){s.classList.remove('active');});
       btn.classList.add('active');
       document.getElementById('sec-'+btn.dataset.sec).classList.add('active');
-      if(btn.dataset.sec==='test'){startMic();showHint();}else{stopMic();hideHint();}
     });});
     document.querySelectorAll('.open-toggle').forEach(function(t){t.addEventListener('change',function(){
       var row=t.closest('.dayrow');var on=t.checked;
@@ -435,44 +477,6 @@ app.get("/", (_req, res) => {
       var ta=document.getElementById('assistant-text');
       navigator.clipboard.writeText(ta.value).then(function(){toast('Tekst kopeeritud. Kleebi see Vapisse.',true);},function(){ta.select();toast('Vajuta Ctrl/Cmd+C, et kopeerida.',true);});
     });}
-    var micStream=null,micCtx=null,micRAF=null,hintTimer=null;
-    function showHint(){var h=document.getElementById('call-hint');if(h){h.hidden=false;clearTimeout(hintTimer);hintTimer=setTimeout(hideHint,9000);}}
-    function hideHint(){var h=document.getElementById('call-hint');if(h){h.hidden=true;}}
-    function stopMic(){
-      if(micRAF){cancelAnimationFrame(micRAF);micRAF=null;}
-      if(micStream){micStream.getTracks().forEach(function(t){t.stop();});micStream=null;}
-      if(micCtx){micCtx.close();micCtx=null;}
-      var viz=document.getElementById('mic-viz');if(viz){viz.hidden=true;}
-      var mt=document.getElementById('mic-toggle');if(mt){mt.textContent='Luba mikrofon';mt.classList.remove('mic-on');}
-    }
-    function startMic(){
-      if(micStream)return;
-      var ms=document.getElementById('mic-status');
-      if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){if(ms){ms.textContent='Brauser ei toeta mikrofoni.';}return;}
-      navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
-        micStream=s;
-        var mt=document.getElementById('mic-toggle');if(mt){mt.textContent='Peata';mt.classList.add('mic-on');}
-        if(ms){ms.textContent='';}
-        var AC=window.AudioContext||window.webkitAudioContext;
-        micCtx=new AC();
-        var src=micCtx.createMediaStreamSource(s);
-        var an=micCtx.createAnalyser();an.fftSize=64;an.smoothingTimeConstant=0.7;src.connect(an);
-        var data=new Uint8Array(an.frequencyBinCount);
-        var viz=document.getElementById('mic-viz');if(viz){viz.hidden=false;}
-        var bars=document.querySelectorAll('#mic-viz .bar');
-        function tick(){
-          an.getByteFrequencyData(data);
-          for(var i=0;i<bars.length;i++){
-            var v=data[i]/255;
-            bars[i].style.transform='scaleY('+Math.max(0.06,Math.min(1,v*1.4)).toFixed(3)+')';
-          }
-          micRAF=requestAnimationFrame(tick);
-        }
-        tick();
-      }).catch(function(e){if(ms){ms.textContent='Mikrofoni ei saanud kasutada: '+e.message;}});
-    }
-    var micToggle=document.getElementById('mic-toggle');
-    if(micToggle){micToggle.addEventListener('click',function(){if(micStream){stopMic();}else{startMic();}});}
     var today=new Date().toISOString().slice(0,10);
     function loadRezv(){
       fetch('/api/bookings',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
@@ -489,6 +493,7 @@ app.get("/", (_req, res) => {
     loadRezv();setInterval(loadRezv,4000);
   })();
   </script>
+  ${callScript}
   </body></html>`);
 });
 
