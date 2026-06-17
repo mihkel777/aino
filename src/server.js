@@ -166,24 +166,36 @@ app.get("/demo", (_req, res) => {
 
   const head = `<!doctype html><html lang="et"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${restaurant.name} · Räägi Ainoga</title>
+  <title>${restaurant.name} — broneeri laud</title>
   <style>
-    body{font-family:system-ui,sans-serif;background:#0f1f33;color:#eaf0f7;margin:0;padding:2rem;line-height:1.5;}
-    h1{font-weight:700;margin:0 0 .25rem;} .sub{color:#9fb3cc;margin:0 0 1.5rem;}
-    .card{background:#17304d;border-radius:12px;padding:1.5rem;max-width:760px;margin:0 auto 1.5rem;}
-    ol{margin:.5rem 0 0;padding-left:1.2rem;} li{margin:.35rem 0;}
-    .hint{color:#9fb3cc;font-size:.95rem;}
-    .panel{max-width:760px;margin:0 auto;}
-    iframe{width:100%;height:340px;border:0;border-radius:12px;background:#0f1f33;}
-    .notice{background:#5a2a2a;color:#ffd9d9;border-radius:10px;padding:1rem 1.25rem;max-width:760px;margin:0 auto;}
-    code{background:#0f1f33;padding:.1rem .4rem;border-radius:5px;}
-  </style></head><body>
-  <div class="card">
-    <h1>${restaurant.name}</h1>
-    <p class="sub">Räägi Ainoga, meie virtuaalse assistendiga — broneeri laud eesti keeles.</p>`;
+    :root{--bg:#0b1828;--panel:#17304d;--panel2:#1d3a5c;--line:#21456e;--text:#eaf0f7;--muted:#9fb3cc;--accent:#2a9d8f;--blue:#2f7fd6;}
+    *{box-sizing:border-box;}
+    body{font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(1200px 600px at 50% -10%,#163354 0%,var(--bg) 60%);color:var(--text);margin:0;padding:2rem 1.25rem 4rem;line-height:1.55;}
+    .wrap{max-width:780px;margin:0 auto;}
+    .badge{display:inline-block;background:rgba(42,157,143,.15);color:var(--accent);border:1px solid rgba(42,157,143,.4);border-radius:999px;padding:.2rem .7rem;font-size:.78rem;font-weight:600;letter-spacing:.02em;}
+    h1{font-size:2.4rem;font-weight:800;margin:.7rem 0 .2rem;letter-spacing:-.02em;}
+    .tagline{color:var(--muted);font-size:1.12rem;margin:0 0 1.6rem;}
+    .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin:0 0 1.25rem;}
+    .step{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1rem;}
+    .step .n{display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;border-radius:999px;background:var(--blue);color:#fff;font-weight:700;font-size:.85rem;margin-bottom:.5rem;}
+    .step p{margin:0;font-size:.95rem;}
+    .example{background:var(--panel2);border-left:3px solid var(--accent);border-radius:8px;padding:.8rem 1rem;margin:0 0 1.5rem;}
+    .example .lbl{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;margin:0 0 .25rem;}
+    .example .q{font-size:1.05rem;font-style:italic;margin:0;}
+    .panel-title{font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 .5rem;}
+    iframe{width:100%;height:360px;border:1px solid var(--line);border-radius:12px;background:var(--bg);}
+    .foot{color:var(--muted);font-size:.82rem;text-align:center;margin:1.6rem 0 0;}
+    .foot span{white-space:nowrap;}
+    .notice{background:#3a2330;color:#ffd9e2;border:1px solid #6b3a4f;border-radius:12px;padding:1.1rem 1.25rem;}
+    code{background:#0b1828;padding:.1rem .4rem;border-radius:5px;}
+    @media(max-width:560px){.steps{grid-template-columns:1fr;}h1{font-size:2rem;}}
+  </style></head><body><div class="wrap">
+    <span class="badge">⬤ Tehisintellekti assistent</span>
+    <h1>${restaurant.name}</h1>`;
 
   if (!publicKey || !assistantId) {
     return res.send(`${head}
+      <p class="tagline">Broneeri laud meie virtuaalse assistendiga.</p>
       <div class="notice">
         Demo pole veel seadistatud. Määra serveris keskkonnamuutujad
         <code>VAPI_PUBLIC_KEY</code> ja <code>VAPI_ASSISTANT_ID</code>
@@ -192,15 +204,19 @@ app.get("/demo", (_req, res) => {
   }
 
   res.send(`${head}
-    <ol>
-      <li>Vajuta nupule ja <b>luba mikrofoni kasutamine</b>.</li>
-      <li>Räägi eesti keeles, näiteks: <i>"Sooviksin broneerida laua neljale reedeks kella seitsmeks."</i></li>
-      <li>Vaata, kuidas broneering ilmub allolevasse tabelisse mõne sekundiga.</li>
-    </ol>
-    <p class="hint">Toimib telefonis ja arvutis. Vajab mikrofoni ja interneti­ühendust.</p>
-  </div>
-  <div class="panel">
+    <p class="tagline">Broneeri laud meie virtuaalse assistendiga — räägi lihtsalt eesti keeles.</p>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><p>Vajuta <b>kõnenupule</b> ja luba mikrofon.</p></div>
+      <div class="step"><span class="n">2</span><p>Räägi eesti keeles, mida soovid broneerida.</p></div>
+      <div class="step"><span class="n">3</span><p>Vaata, kuidas broneering ilmub kohe tabelisse.</p></div>
+    </div>
+    <div class="example">
+      <p class="lbl">Proovi öelda</p>
+      <p class="q">"Sooviksin broneerida laua neljale reedeks kella seitsmeks."</p>
+    </div>
+    <p class="panel-title">Broneeringud reaalajas</p>
     <iframe src="/" title="Broneeringud reaalajas"></iframe>
+    <p class="foot"><span>Toimib telefonis ja arvutis.</span> <span>See on tehisintellekti assistent.</span> <span>Ehitatud Vapi + Claude peal.</span></p>
   </div>
   <script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"></script>
   <vapi-widget public-key="${publicKey}" assistant-id="${assistantId}" mode="voice"></vapi-widget>
