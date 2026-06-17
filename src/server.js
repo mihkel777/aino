@@ -385,7 +385,7 @@ app.get("/", (_req, res) => {
         document.querySelectorAll('.brand-rest').forEach(function(e){e.textContent=res.d.config.name;});
         if(res.d.assistant){
           var ta=document.getElementById('assistant-text');
-          if(ta){ta.value=res.d.assistant.systemPrompt+'\n\n--- Esimene lause (First Message) ---\n'+res.d.assistant.firstMessage;}
+          if(ta){ta.value=res.d.assistant.systemPrompt+'\\n\\n--- Esimene lause (First Message) ---\\n'+res.d.assistant.firstMessage;}
         }
       })
       .catch(function(e){toast('Viga: '+e.message,false);})
