@@ -18,9 +18,10 @@ import {
 } from "./config.js";
 import { hoursSummary, buildSystemPrompt, buildFirstMessage } from "./vapi-assistant.js";
 import { store } from "./store.js";
+import { callStore } from "./calls.js";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "2mb" })); // transcripts in webhook payloads can be largish
 
 // ---- helpers -------------------------------------------------------------
 
@@ -174,6 +175,81 @@ app.post("/tools/book-table", (req, res) => {
 
 app.get("/api/bookings", (_req, res) => {
   res.json({ bookings: store.allBookings() });
+});
+
+// ---- Vapi end-of-call webhook (feeds Conversations) ---------------------
+// Configure this URL as the assistant's Server URL in Vapi, with a secret.
+// We verify the secret (NOT the account key) -> zero-key posture preserved.
+
+function parseEndOfCall(msg) {
+  const call = msg.call || {};
+  const analysis = msg.analysis || {};
+  const artifact = msg.artifact || {};
+  let durationSec = 0;
+  if (typeof msg.durationSeconds === "number") durationSec = Math.round(msg.durationSeconds);
+  else if (typeof msg.durationMs === "number") durationSec = Math.round(msg.durationMs / 1000);
+  const transcript = msg.transcript || artifact.transcript || "";
+  const caller =
+    (msg.customer && msg.customer.number) || (call.customer && call.customer.number) || "Tundmatu";
+  const sd = analysis.structuredData || {};
+  return {
+    id: call.id || msg.callId,
+    createdAt: msg.startedAt || call.startedAt || new Date().toISOString(),
+    caller,
+    durationSec,
+    summary: msg.summary || analysis.summary || "",
+    transcript: typeof transcript === "string" ? transcript : JSON.stringify(transcript),
+    outcome: sd.outcome || sd.topic || "",
+    success: analysis.successEvaluation ?? null,
+    endedReason: msg.endedReason || "",
+    recordingUrl: msg.recordingUrl || artifact.recordingUrl || "",
+  };
+}
+
+app.post("/vapi/webhook", (req, res) => {
+  const secret = process.env.VAPI_WEBHOOK_SECRET;
+  if (secret && req.get("x-vapi-secret") !== secret) {
+    return res.status(401).json({ ok: false });
+  }
+  const msg = req.body?.message || req.body || {};
+  if (msg.type === "end-of-call-report") {
+    try {
+      callStore.add(parseEndOfCall(msg));
+    } catch (e) {
+      console.error("webhook parse error:", e.message);
+    }
+  }
+  res.json({ ok: true }); // Vapi ignores non-200
+});
+
+// ---- conversations API (powers the Vestlused screen) --------------------
+
+app.get("/api/calls", (_req, res) => {
+  res.json({
+    calls: callStore.all().map((c) => ({
+      id: c.id,
+      createdAt: c.createdAt,
+      caller: c.caller,
+      durationSec: c.durationSec,
+      summary: c.summary,
+      outcome: c.outcome,
+      noteCount: c.notes.length,
+    })),
+  });
+});
+
+app.get("/api/calls/:id", (req, res) => {
+  const c = callStore.get(req.params.id);
+  if (!c) return res.status(404).json({ ok: false });
+  res.json(c);
+});
+
+app.post("/api/calls/:id/notes", (req, res) => {
+  const text = (req.body?.text || "").toString().trim();
+  if (!text) return res.status(400).json({ ok: false, error: "Märkus on tühi." });
+  const note = callStore.addNote(req.params.id, text);
+  if (!note) return res.status(404).json({ ok: false });
+  res.json({ ok: true, note });
 });
 
 // ---- config API (manager dashboard reads/writes restaurant settings) ----
@@ -368,6 +444,28 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     .faqrow input,.taskrow input{width:100%;}
     .rmrow{flex:none;width:2rem;height:2rem;border-radius:8px;border:1px solid var(--line);background:none;color:var(--muted);font-size:1.1rem;line-height:1;cursor:pointer;}
     .rmrow:hover{color:var(--err);border-color:var(--err);}
+    .callwrap{display:grid;grid-template-columns:300px 1fr;gap:1rem;align-items:start;}
+    .call-list{display:flex;flex-direction:column;gap:.5rem;max-height:70vh;overflow:auto;}
+    .callitem{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.8rem 1rem;cursor:pointer;}
+    .callitem:hover{border-color:rgba(201,169,106,.4);}
+    .callitem.active{border-color:var(--gold);background:rgba(201,169,106,.08);}
+    .callitem .ci-top{display:flex;justify-content:space-between;gap:.5rem;font-size:.9rem;}
+    .callitem .ci-caller{font-weight:500;}
+    .callitem .ci-sum{color:var(--muted);font-size:.85rem;margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .call-detail{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.4rem;min-height:200px;}
+    .cd-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;}
+    .cd-caller{font-family:'Fraunces',serif;font-size:1.3rem;}
+    .cd-meta{color:var(--muted);font-size:.85rem;margin-top:.2rem;}
+    .cd-rec{color:var(--gold);font-size:.85rem;border:1px solid rgba(201,169,106,.4);border-radius:999px;padding:.2rem .7rem;text-decoration:none;white-space:nowrap;}
+    .cd-section{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:1.1rem 0 .35rem;}
+    .cd-text{font-size:.95rem;line-height:1.6;white-space:pre-wrap;}
+    .cd-pill{display:inline-block;background:rgba(201,169,106,.15);color:var(--gold);border-radius:999px;padding:.15rem .6rem;font-size:.8rem;}
+    .note{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem;margin-bottom:.4rem;font-size:.9rem;}
+    .note .note-at{color:var(--muted);font-size:.75rem;margin-top:.2rem;}
+    .noteadd{display:flex;gap:.5rem;margin-top:.6rem;}
+    .noteadd input{flex:1;}
+    .muted{color:var(--muted);}
+    @media(max-width:720px){.callwrap{grid-template-columns:1fr;}}
     .rezv{display:flex;flex-direction:column;gap:.6rem;}
     .rez{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1rem 1.25rem;}
     .rez-name{font-family:'Fraunces',serif;font-size:1.2rem;}
@@ -389,6 +487,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         <button class="active" data-sec="overview">Ülevaade</button>
         <button data-sec="settings">Seaded</button>
         <button data-sec="test">Testi assistenti</button>
+        <button data-sec="calls">Vestlused</button>
         <button data-sec="bookings">Broneeringud</button>
       </nav>
       <div class="status"><span class="dot"></span>${ready ? "Assistent ühendatud" : "Assistent seadistamata"}</div>
@@ -451,6 +550,15 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       <section class="sec" id="sec-test">
         <h1>Testi assistenti</h1>
         ${testInner}
+      </section>
+
+      <section class="sec" id="sec-calls">
+        <h1>Vestlused</h1>
+        <p class="lead">Kõik Aino kõned — kokkuvõte, transkriptsioon ja tulemus. Uueneb automaatselt.</p>
+        <div class="callwrap">
+          <div id="call-list" class="call-list"><div class="empty">Laen…</div></div>
+          <div id="call-detail" class="call-detail"><div class="empty">Vali vestlus vasakult.</div></div>
+        </div>
       </section>
 
       <section class="sec" id="sec-bookings">
@@ -536,6 +644,37 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       }).catch(function(){});
     }
     loadRezv();setInterval(loadRezv,4000);
+
+    var selectedCall=null;
+    function fmtDur(s){s=s||0;var m=Math.floor(s/60);var ss=s%60;return m+' min '+(ss<10?'0':'')+ss+' s';}
+    function fmtDate(iso){try{return new Date(iso).toLocaleString('et-EE');}catch(e){return iso;}}
+    function notesHtml(notes){if(!notes||!notes.length){return '<div class="muted" style="font-size:.85rem">Märkmeid pole.</div>';}return notes.map(function(n){return '<div class="note">'+esc(n.text)+'<div class="note-at">'+fmtDate(n.at)+'</div></div>';}).join('');}
+    function renderCallDetail(c){
+      var el=document.getElementById('call-detail');if(!el)return;
+      var rec=c.recordingUrl?'<a class="cd-rec" href="'+esc(c.recordingUrl)+'" target="_blank" rel="noopener">Salvestus</a>':'';
+      var outcome=c.outcome?'<div class="cd-section">Tulemus</div><div><span class="cd-pill">'+esc(c.outcome)+'</span></div>':'';
+      el.innerHTML='<div class="cd-head"><div><div class="cd-caller">'+esc(c.caller)+'</div><div class="cd-meta">'+fmtDate(c.createdAt)+' · '+fmtDur(c.durationSec)+'</div></div>'+rec+'</div>'+outcome+'<div class="cd-section">Kokkuvõte</div><div class="cd-text">'+(c.summary?esc(c.summary):'<span class="muted">—</span>')+'</div><div class="cd-section">Transkriptsioon</div><div class="cd-text">'+(c.transcript?esc(c.transcript):'<span class="muted">—</span>')+'</div><div class="cd-section">Märkmed</div><div id="notes">'+notesHtml(c.notes)+'</div><div class="noteadd"><input type="text" id="note-input" placeholder="Lisa märkus..."><button class="btn" id="note-add">Lisa</button></div>';
+      var addBtn=document.getElementById('note-add');
+      addBtn.addEventListener('click',function(){
+        var inp=document.getElementById('note-input');var t=inp.value.trim();if(!t){return;}addBtn.disabled=true;
+        fetch('/api/calls/'+encodeURIComponent(c.id)+'/notes',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:t})})
+        .then(function(r){return r.json();}).then(function(d){if(d.ok){openCall(c.id);}}).catch(function(){}).then(function(){addBtn.disabled=false;});
+      });
+    }
+    function openCall(id){
+      selectedCall=id;
+      document.querySelectorAll('.callitem').forEach(function(it){it.classList.toggle('active',it.dataset.id===id);});
+      fetch('/api/calls/'+encodeURIComponent(id)).then(function(r){return r.json();}).then(renderCallDetail).catch(function(){});
+    }
+    function loadCalls(){
+      fetch('/api/calls',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+        var list=d.calls||[];var el=document.getElementById('call-list');if(!el){return;}
+        if(!list.length){el.innerHTML='<div class="empty">Veel vestlusi pole.</div>';return;}
+        el.innerHTML=list.map(function(c){return '<div class="callitem'+(c.id===selectedCall?' active':'')+'" data-id="'+esc(c.id)+'"><div class="ci-top"><span class="ci-caller">'+esc(c.caller)+'</span><span class="muted">'+fmtDur(c.durationSec)+'</span></div><div class="ci-sum">'+esc(c.summary||'—')+'</div></div>';}).join('');
+        el.querySelectorAll('.callitem').forEach(function(it){it.addEventListener('click',function(){openCall(it.dataset.id);});});
+      }).catch(function(){});
+    }
+    loadCalls();setInterval(loadCalls,8000);
   })();
   </script>
   ${callScript}
