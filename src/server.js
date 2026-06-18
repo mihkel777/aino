@@ -206,17 +206,30 @@ function parseEndOfCall(msg) {
   };
 }
 
+// GET is just a reachability check (open it in a browser to confirm it's live).
+app.get("/vapi/webhook", (_req, res) => {
+  res.json({
+    ok: true,
+    hint: "Vapi peab siia POSTima 'end-of-call-report' sõnumi.",
+    secretRequired: !!process.env.VAPI_WEBHOOK_SECRET,
+  });
+});
+
 app.post("/vapi/webhook", (req, res) => {
   const secret = process.env.VAPI_WEBHOOK_SECRET;
-  if (secret && req.get("x-vapi-secret") !== secret) {
+  const got = req.get("x-vapi-secret");
+  const msg = req.body?.message || req.body || {};
+  if (secret && got !== secret) {
+    console.warn(`[vapi/webhook] 401 secret mismatch (header present: ${got ? "yes" : "no"}), type=${msg.type}`);
     return res.status(401).json({ ok: false });
   }
-  const msg = req.body?.message || req.body || {};
+  console.log(`[vapi/webhook] received type=${msg.type || "(none)"}`);
   if (msg.type === "end-of-call-report") {
     try {
-      callStore.add(parseEndOfCall(msg));
+      const c = callStore.add(parseEndOfCall(msg));
+      console.log(`[vapi/webhook] stored call ${c.id} from ${c.caller}`);
     } catch (e) {
-      console.error("webhook parse error:", e.message);
+      console.error("[vapi/webhook] parse error:", e.message);
     }
   }
   res.json({ ok: true }); // Vapi ignores non-200
