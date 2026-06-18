@@ -14,6 +14,7 @@ import {
   slotIsWithinHours,
   validateConfig,
   updateConfig,
+  TONES,
 } from "./config.js";
 import { hoursSummary, buildSystemPrompt, buildFirstMessage } from "./vapi-assistant.js";
 import { store } from "./store.js";
@@ -222,6 +223,10 @@ app.get("/", (_req, res) => {
     return `<div class="dayrow" data-day="${d}"><span class="dayname">${label}</span><label class="sw"><input type="checkbox" class="open-toggle" ${open ? "checked" : ""}> Avatud</label><input type="time" class="open" value="${open ? h.open : "12:00"}" ${open ? "" : "disabled"}><span class="dash">–</span><input type="time" class="close" value="${open ? h.close : "22:00"}" ${open ? "" : "disabled"}></div>`;
   }).join("");
   const slotOpts = [15, 30, 60].map((m) => `<option value="${m}"${restaurant.slotMinutes === m ? " selected" : ""}>${m} min</option>`).join("");
+  const TONE_LABELS = { otsekohene: "Otsekohene", soe: "Soe ja sõbralik", ametlik: "Ametlik", hõivatud: "Hõivatud, abivalmis" };
+  const toneBtns = TONES.map((t) => `<button type="button" class="toneb${restaurant.greetingTone === t ? " active" : ""}" data-tone="${t}">${TONE_LABELS[t] || t}</button>`).join("");
+  const faqRows = (restaurant.faqs || []).map((f) => `<div class="faqrow"><input type="text" class="faq-q" placeholder="Küsimus" value="${esc(f.q)}"><input type="text" class="faq-a" placeholder="Vastus" value="${esc(f.a)}"><button type="button" class="rmrow" aria-label="Eemalda">×</button></div>`).join("");
+  const taskRows = (restaurant.tasks || []).map((t) => `<div class="taskrow"><input type="text" class="task-t" placeholder="Nt: kui klient küsib parkimist, paku Google Mapsi linki" value="${esc(t)}"><button type="button" class="rmrow" aria-label="Eemalda">×</button></div>`).join("");
   const assistantText = esc(`${buildSystemPrompt(restaurant)}\n\n--- Esimene lause (First Message) ---\n${buildFirstMessage(restaurant)}`);
 
   const bars = Array.from({ length: 22 }).map(() => '<span class="bar"></span>').join("");
@@ -352,6 +357,17 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     .btn{background:var(--gold);color:#1a1407;border:0;border-radius:10px;padding:.75rem 1.5rem;font:inherit;font-weight:600;cursor:pointer;margin-top:.6rem;}
     .btn:hover{filter:brightness(1.07);}
     .btn:disabled{opacity:.6;cursor:default;}
+    .btn.ghost{background:none;border:1px solid var(--line);color:var(--text);font-weight:500;padding:.5rem 1rem;margin-top:.6rem;}
+    .tones{display:flex;flex-wrap:wrap;gap:.5rem;}
+    .toneb{background:none;border:1px solid var(--line);color:var(--muted);font:inherit;font-size:.9rem;padding:.45rem .9rem;border-radius:999px;cursor:pointer;}
+    .toneb:hover{color:var(--text);}
+    .toneb.active{background:rgba(201,169,106,.15);border-color:rgba(201,169,106,.5);color:var(--text);}
+    .faqrow,.taskrow{display:flex;gap:.5rem;margin-bottom:.5rem;align-items:center;}
+    .faqrow .faq-q{flex:0 0 38%;}
+    .faqrow .faq-a,.taskrow .task-t{flex:1;}
+    .faqrow input,.taskrow input{width:100%;}
+    .rmrow{flex:none;width:2rem;height:2rem;border-radius:8px;border:1px solid var(--line);background:none;color:var(--muted);font-size:1.1rem;line-height:1;cursor:pointer;}
+    .rmrow:hover{color:var(--err);border-color:var(--err);}
     .rezv{display:flex;flex-direction:column;gap:.6rem;}
     .rez{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1rem 1.25rem;}
     .rez-name{font-family:'Fraunces',serif;font-size:1.2rem;}
@@ -406,6 +422,22 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
           <div class="field"><label class="lbl">Broneeringu samm</label><select id="f-slot">${slotOpts}</select><p class="hint">Ajavahemike pikkus.</p></div>
         </div>
         <div class="field"><label class="lbl">Lahtiolekuajad</label>${dayRows}</div>
+        <div class="field">
+          <label class="lbl">Tervituse toon</label>
+          <div class="tones" id="tones">${toneBtns}</div>
+        </div>
+        <div class="field">
+          <label class="lbl">Korduma kippuvad küsimused</label>
+          <p class="hint" style="margin:0 0 .6rem">Assistent vastab nende põhjal, kui klient küsib.</p>
+          <div id="faqs">${faqRows}</div>
+          <button type="button" class="btn ghost" id="add-faq">+ Lisa küsimus</button>
+        </div>
+        <div class="field">
+          <label class="lbl">Ülesanded</label>
+          <p class="hint" style="margin:0 0 .6rem">Juhised tegevusteks, nt "kui klient küsib sündmuse kohta, ütle et keegi võtab ühendust".</p>
+          <div id="tasks">${taskRows}</div>
+          <button type="button" class="btn ghost" id="add-task">+ Lisa ülesanne</button>
+        </div>
         <button class="btn" id="save">Salvesta</button>
 
         <div class="field" style="margin-top:2.2rem">
@@ -444,6 +476,14 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       var row=t.closest('.dayrow');var on=t.checked;
       row.querySelector('.open').disabled=!on;row.querySelector('.close').disabled=!on;
     });});
+    var tones=document.getElementById('tones');
+    if(tones){tones.addEventListener('click',function(e){if(e.target.classList.contains('toneb')){tones.querySelectorAll('.toneb').forEach(function(b){b.classList.remove('active');});e.target.classList.add('active');}});}
+    function faqRowEl(){var d=document.createElement('div');d.className='faqrow';d.innerHTML='<input type="text" class="faq-q" placeholder="Küsimus"><input type="text" class="faq-a" placeholder="Vastus"><button type="button" class="rmrow" aria-label="Eemalda">×</button>';return d;}
+    function taskRowEl(){var d=document.createElement('div');d.className='taskrow';d.innerHTML='<input type="text" class="task-t" placeholder="Nt: kui klient küsib parkimist, paku Google Mapsi linki"><button type="button" class="rmrow" aria-label="Eemalda">×</button>';return d;}
+    var addFaq=document.getElementById('add-faq');if(addFaq){addFaq.addEventListener('click',function(){document.getElementById('faqs').appendChild(faqRowEl());});}
+    var addTask=document.getElementById('add-task');if(addTask){addTask.addEventListener('click',function(){document.getElementById('tasks').appendChild(taskRowEl());});}
+    var faqsBox=document.getElementById('faqs');if(faqsBox){faqsBox.addEventListener('click',function(e){if(e.target.classList.contains('rmrow')){e.target.closest('.faqrow').remove();}});}
+    var tasksBox=document.getElementById('tasks');if(tasksBox){tasksBox.addEventListener('click',function(e){if(e.target.classList.contains('rmrow')){e.target.closest('.taskrow').remove();}});}
     var toastEl=document.getElementById('toast');var tt;
     function toast(msg,ok){toastEl.textContent=msg;toastEl.className='toast show'+(ok?'':' err');clearTimeout(tt);tt=setTimeout(function(){toastEl.className='toast'+(ok?'':' err');},6000);}
     function collect(){
@@ -453,7 +493,12 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         if(!row.querySelector('.open-toggle').checked){hours[d]=null;}
         else{hours[d]={open:row.querySelector('.open').value,close:row.querySelector('.close').value};}
       });
-      return {name:document.getElementById('f-name').value,capacity:parseInt(document.getElementById('f-capacity').value,10),maxPartySize:parseInt(document.getElementById('f-maxparty').value,10),slotMinutes:parseInt(document.getElementById('f-slot').value,10),hours:hours};
+      var faqs=[];
+      document.querySelectorAll('#faqs .faqrow').forEach(function(r){var q=r.querySelector('.faq-q').value.trim();var a=r.querySelector('.faq-a').value.trim();if(q&&a){faqs.push({q:q,a:a});}});
+      var tasks=[];
+      document.querySelectorAll('#tasks .taskrow').forEach(function(r){var v=r.querySelector('.task-t').value.trim();if(v){tasks.push(v);}});
+      var tb=document.querySelector('#tones .toneb.active');
+      return {name:document.getElementById('f-name').value,capacity:parseInt(document.getElementById('f-capacity').value,10),maxPartySize:parseInt(document.getElementById('f-maxparty').value,10),slotMinutes:parseInt(document.getElementById('f-slot').value,10),hours:hours,greetingTone:tb?tb.dataset.tone:'soe',faqs:faqs,tasks:tasks};
     }
     var saveBtn=document.getElementById('save');
     saveBtn.addEventListener('click',function(){

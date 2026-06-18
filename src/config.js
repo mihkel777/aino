@@ -27,7 +27,12 @@ const defaults = {
     6: { open: "12:00", close: "23:00" },
   },
   slotMinutes: 30, // booking granularity
+  greetingTone: "soe", // otsekohene | soe | ametlik | hõivatud
+  faqs: [], // [{ q, a }] knowledge the assistant can answer
+  tasks: [], // ["kui X, siis tee Y"] action instructions
 };
+
+export const TONES = ["otsekohene", "soe", "ametlik", "hõivatud"];
 
 export const restaurant = structuredClone(defaults);
 
@@ -91,6 +96,29 @@ export function validateConfig(patch) {
       if (toMinutes(h.open) >= toMinutes(h.close)) {
         throw new Error(`Avamisaeg peab olema enne sulgemisaega (päev ${day}).`);
       }
+    }
+  }
+  if (patch.greetingTone !== undefined && !TONES.includes(patch.greetingTone)) {
+    throw new Error("Tundmatu tervituse toon.");
+  }
+  if (patch.faqs !== undefined) {
+    if (!Array.isArray(patch.faqs)) throw new Error("KKK on vigane.");
+    if (patch.faqs.length > 50) throw new Error("Liiga palju küsimusi (max 50).");
+    for (const f of patch.faqs) {
+      if (!f || typeof f.q !== "string" || typeof f.a !== "string" || !f.q.trim() || !f.a.trim()) {
+        throw new Error("Iga KKK kirje vajab nii küsimust kui vastust.");
+      }
+      if (f.q.length > 300 || f.a.length > 1000) {
+        throw new Error("KKK küsimus või vastus on liiga pikk.");
+      }
+    }
+  }
+  if (patch.tasks !== undefined) {
+    if (!Array.isArray(patch.tasks)) throw new Error("Ülesanded on vigased.");
+    if (patch.tasks.length > 50) throw new Error("Liiga palju ülesandeid (max 50).");
+    for (const t of patch.tasks) {
+      if (typeof t !== "string" || !t.trim()) throw new Error("Ülesanne ei tohi olla tühi.");
+      if (t.length > 500) throw new Error("Ülesanne on liiga pikk.");
     }
   }
   return true;

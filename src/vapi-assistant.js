@@ -21,6 +21,31 @@ export function hoursSummary(restaurant) {
   }).join(", ");
 }
 
+// Greeting/conversation tone, chosen in the dashboard, mapped to a prompt line.
+const TONE_INSTRUCTIONS = {
+  otsekohene: "Ole otsekohene ja napisõnaline.",
+  soe: "Ole soe, sõbralik ja külalislahke.",
+  ametlik: "Ole viisakas ja ametlik.",
+  hõivatud: "Ole kiire ja abivalmis, nagu kiirel õhtul saalis.",
+};
+
+function faqBlock(restaurant) {
+  const faqs = restaurant.faqs || [];
+  if (!faqs.length) return "";
+  return (
+    "\n\nKORDUMA KIPPUVAD KÜSIMUSED (vasta nende põhjal, kui klient küsib):\n" +
+    faqs.map((f) => `- K: ${f.q}\n  V: ${f.a}`).join("\n")
+  );
+}
+
+function taskBlock(restaurant) {
+  const tasks = restaurant.tasks || [];
+  if (!tasks.length) return "";
+  return (
+    "\n\nÜLESANDED (täida, kui olukord sobib):\n" + tasks.map((t) => `- ${t}`).join("\n")
+  );
+}
+
 // Build the system prompt from the current restaurant config. The manager's
 // dashboard settings (name, hours, max party size) flow into the live bot here.
 export function buildSystemPrompt(restaurant) {
@@ -31,6 +56,7 @@ TERVITUS (KOHUSTUSLIK):
 
 ROLL JA TOON:
 - Räägi loomulikus, sõbralikus eesti keeles. Ole lühike ja selge, nagu hea administraator telefonis.
+- ${TONE_INSTRUCTIONS[restaurant.greetingTone] || TONE_INSTRUCTIONS.soe}
 - Vasta võimalikult lühidalt: tavaliselt üks lause. Küsi korraga ainult üht asja. Ära korda üle seda, mida pole vaja. (Lühike vastus = kiirem kõne.)
 
 SINU AINUS ÜLESANNE on lauabroneeringud ja restorani kohta käivad lihtsad küsimused (lahtiolekuajad, asukoht). Kõige muu puhul ütle viisakalt, et see ei kuulu sinu pädevusse, ja paku, et keegi võtab kliendiga ühendust.
@@ -56,7 +82,7 @@ KUI AEG POLE VABA:
 - Tööriist annab sulle lähimad vabad ajad. Paku need kliendile.
 
 KUI SELTSKOND ON SUUR:
-- Üle ${restaurant.maxPartySize} inimese: ütle, et suuremad seltskonnad palun broneerigu kodulehel, ja paku abi väiksema lauaga.
+- Üle ${restaurant.maxPartySize} inimese: ütle, et suuremad seltskonnad palun broneerigu kodulehel, ja paku abi väiksema lauaga.${faqBlock(restaurant)}${taskBlock(restaurant)}
 
 Ära leiuta infot, mida sul pole. Kui sa midagi ei tea, ütle seda ausalt.`;
 }
