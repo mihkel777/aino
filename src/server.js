@@ -19,9 +19,84 @@ import {
 import { hoursSummary, buildSystemPrompt, buildFirstMessage } from "./vapi-assistant.js";
 import { store } from "./store.js";
 import { callStore } from "./calls.js";
+import crypto from "crypto";
 
 const app = express();
 app.use(express.json({ limit: "2mb" })); // transcripts in webhook payloads can be largish
+app.use(express.urlencoded({ extended: false })); // login form
+
+// ---- auth gate (opt-in via DASHBOARD_PASSWORD) ---------------------------
+// Protects the dashboard + data APIs (caller PII). Endpoints Vapi calls
+// (/tools/*, /vapi/webhook) stay open. If no password is set, the gate is off.
+
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
+
+function authToken() {
+  return crypto.createHmac("sha256", "aino-auth").update(DASHBOARD_PASSWORD || "").digest("hex");
+}
+
+function isAuthed(req) {
+  if (!DASHBOARD_PASSWORD) return true; // gate disabled
+  const m = (req.headers.cookie || "").match(/(?:^|;\s*)aino_auth=([a-f0-9]+)/);
+  if (!m) return false;
+  const a = Buffer.from(m[1]);
+  const b = Buffer.from(authToken());
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+const OPEN_PATHS = new Set(["/vapi/webhook", "/login", "/logout", "/demo"]);
+
+app.use((req, res, next) => {
+  if (req.path.startsWith("/tools/") || OPEN_PATHS.has(req.path)) return next();
+  if (isAuthed(req)) return next();
+  if (req.path.startsWith("/api/")) return res.status(401).json({ ok: false, error: "Sisselogimine nõutav." });
+  return res.redirect("/login");
+});
+
+// ---- login / logout ------------------------------------------------------
+
+app.get("/login", (req, res) => {
+  if (isAuthed(req)) return res.redirect("/");
+  const err = req.query.e ? `<p class="err">Vale parool.</p>` : "";
+  res.send(`<!doctype html><html lang="et"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1"><title>Aino — logi sisse</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0c0d0b;color:#ece7db;font-family:'Inter',system-ui,sans-serif;}
+    .box{width:320px;max-width:90vw;text-align:center;}
+    h1{font-family:'Fraunces',serif;font-weight:400;font-size:2.2rem;margin:0 0 1.4rem;}
+    input{width:100%;background:#121310;border:1px solid rgba(236,231,219,.12);color:#ece7db;border-radius:10px;padding:.7rem .8rem;font:inherit;font-size:1rem;margin-bottom:.7rem;}
+    input:focus{outline:none;border-color:#c9a96a;}
+    button{width:100%;background:#c9a96a;color:#1a1407;border:0;border-radius:10px;padding:.75rem;font:inherit;font-weight:600;cursor:pointer;}
+    .err{color:#e6a07f;font-size:.9rem;margin:0 0 .7rem;}
+  </style></head><body>
+  <form class="box" method="POST" action="/login">
+    <h1>Aino</h1>${err}
+    <input type="password" name="password" placeholder="Parool" autofocus autocomplete="current-password">
+    <button type="submit">Logi sisse</button>
+  </form></body></html>`);
+});
+
+app.post("/login", (req, res) => {
+  if (!DASHBOARD_PASSWORD) return res.redirect("/");
+  const given = Buffer.from(String(req.body?.password || ""));
+  const real = Buffer.from(DASHBOARD_PASSWORD);
+  const ok = given.length === real.length && crypto.timingSafeEqual(given, real);
+  if (!ok) return res.redirect("/login?e=1");
+  const secure = req.secure || req.headers["x-forwarded-proto"] === "https";
+  res.cookie("aino_auth", authToken(), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+  res.redirect("/");
+});
+
+app.get("/logout", (_req, res) => {
+  res.clearCookie("aino_auth");
+  res.redirect("/login");
+});
 
 // ---- helpers -------------------------------------------------------------
 
@@ -503,7 +578,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         <button data-sec="calls">Vestlused</button>
         <button data-sec="bookings">Broneeringud</button>
       </nav>
-      <div class="status"><span class="dot"></span>${ready ? "Assistent ühendatud" : "Assistent seadistamata"}</div>
+      <div class="status"><span class="dot"></span>${ready ? "Assistent ühendatud" : "Assistent seadistamata"}${DASHBOARD_PASSWORD ? ` · <a href="/logout" style="color:var(--gold)">Logi välja</a>` : ""}</div>
     </aside>
     <main class="main">
       <section class="sec active" id="sec-overview">
