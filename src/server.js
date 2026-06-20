@@ -321,6 +321,7 @@ app.get("/api/calls", (_req, res) => {
       durationSec: c.durationSec,
       summary: c.summary,
       outcome: c.outcome,
+      success: c.success,
       noteCount: c.notes.length,
     })),
   });
@@ -379,6 +380,44 @@ app.get("/", (_req, res) => {
   const assistantId = process.env.VAPI_ASSISTANT_ID;
   const ready = !!(publicKey && assistantId);
   const name = esc(restaurant.name);
+
+  // ---- analytics (Phase 3) ----
+  const allCalls = callStore.all();
+  const totalCallSec = allCalls.reduce((a, c) => a + (c.durationSec || 0), 0);
+  const fmtCallTime = (sec) => {
+    const m = Math.round(sec / 60);
+    if (m < 60) return `${m} min`;
+    return `${Math.floor(m / 60)} h ${m % 60} min`;
+  };
+  const evaluated = allCalls.filter((c) => c.success === true || c.success === false);
+  const satPct = evaluated.length
+    ? `${Math.round((100 * evaluated.filter((c) => c.success === true).length) / evaluated.length)}%`
+    : "—";
+  // 14-day call volume (bars)
+  const days14 = [...Array(14)].map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (13 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  const byDay = {};
+  allCalls.forEach((c) => {
+    const d = (c.createdAt || "").slice(0, 10);
+    byDay[d] = (byDay[d] || 0) + 1;
+  });
+  const counts = days14.map((d) => byDay[d] || 0);
+  const maxC = Math.max(1, ...counts);
+  const CW = 640, CH = 150, GAP = 6, BW = (CW - GAP * 13) / 14;
+  const chartBars = counts
+    .map((c, i) => {
+      const h = Math.round((c / maxC) * (CH - 28));
+      const x = i * (BW + GAP);
+      const y = CH - h - 18;
+      const label = i % 2 === 0 ? `<text x="${(x + BW / 2).toFixed(1)}" y="${CH - 4}" text-anchor="middle" font-size="9" fill="#6f6a60">${days14[i].slice(8, 10)}.${days14[i].slice(5, 7)}</text>` : "";
+      const val = c > 0 ? `<text x="${(x + BW / 2).toFixed(1)}" y="${y - 3}" text-anchor="middle" font-size="10" fill="#9c968a">${c}</text>` : "";
+      return `<rect x="${x.toFixed(1)}" y="${y}" width="${BW.toFixed(1)}" height="${h}" rx="3" fill="#c9a96a" opacity="0.9"></rect>${val}${label}`;
+    })
+    .join("");
+  const chartSvg = `<svg viewBox="0 0 ${CW} ${CH}" width="100%" style="max-width:100%;display:block">${chartBars}</svg>`;
 
   const DAYS = [[1, "Esmaspäev"], [2, "Teisipäev"], [3, "Kolmapäev"], [4, "Neljapäev"], [5, "Reede"], [6, "Laupäev"], [0, "Pühapäev"]];
   const dayRows = DAYS.map(([d, label]) => {
@@ -585,11 +624,18 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         <h1>Ülevaade</h1>
         <p class="lead"><span class="brand-rest">${name}</span> broneerimisassistent.</p>
         <div class="cards">
-          <div class="statc"><div class="v" id="stat-today">${todayCount}</div><div class="l">Broneeringut täna</div></div>
+          <div class="statc"><div class="v" id="kpi-calls">${allCalls.length}</div><div class="l">Kõnesid kokku</div></div>
+          <div class="statc"><div class="v" id="kpi-calltime">${fmtCallTime(totalCallSec)}</div><div class="l">Kõneaeg kokku</div></div>
           <div class="statc"><div class="v" id="stat-total">${bookings.length}</div><div class="l">Broneeringut kokku</div></div>
+          <div class="statc"><div class="v" id="kpi-sat">${satPct}</div><div class="l">Rahulolu</div></div>
+        </div>
+        <div class="cards">
+          <div class="statc"><div class="v" id="stat-today">${todayCount}</div><div class="l">Broneeringut täna</div></div>
           <div class="statc"><div class="v">${restaurant.capacity}</div><div class="l">Kohti korraga</div></div>
           <div class="statc"><div class="v status-v"><span class="sdot"></span>${ready ? "Ühendatud" : "Seadistamata"}</div><div class="l">Assistent</div></div>
         </div>
+        <p class="card-title">Kõnede maht (14 päeva)</p>
+        <div class="card" style="padding:1rem 1.25rem">${chartSvg}</div>
         <p class="card-title">Lahtiolekuajad</p>
         <div class="card hours-list">
           ${DAYS.map(([d, label]) => {
@@ -754,9 +800,16 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       document.querySelectorAll('.callitem').forEach(function(it){it.classList.toggle('active',it.dataset.id===id);});
       fetch('/api/calls/'+encodeURIComponent(id)).then(function(r){return r.json();}).then(renderCallDetail).catch(function(){});
     }
+    function fmtCallTimeJS(sec){var m=Math.round(sec/60);if(m<60){return m+' min';}return Math.floor(m/60)+' h '+(m%60)+' min';}
     function loadCalls(){
       fetch('/api/calls',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
-        var list=d.calls||[];var el=document.getElementById('call-list');if(!el){return;}
+        var list=d.calls||[];
+        var kc=document.getElementById('kpi-calls');if(kc){kc.textContent=list.length;}
+        var totalSec=list.reduce(function(a,c){return a+(c.durationSec||0);},0);
+        var kt=document.getElementById('kpi-calltime');if(kt){kt.textContent=fmtCallTimeJS(totalSec);}
+        var ev=list.filter(function(c){return c.success===true||c.success===false;});
+        var ks=document.getElementById('kpi-sat');if(ks){ks.textContent=ev.length?Math.round(100*ev.filter(function(c){return c.success===true;}).length/ev.length)+'%':'—';}
+        var el=document.getElementById('call-list');if(!el){return;}
         if(!list.length){el.innerHTML='<div class="empty">Veel vestlusi pole.</div>';return;}
         el.innerHTML=list.map(function(c){return '<div class="callitem'+(c.id===selectedCall?' active':'')+'" data-id="'+esc(c.id)+'"><div class="ci-top"><span class="ci-caller">'+esc(c.caller)+'</span><span class="muted">'+fmtDur(c.durationSec)+'</span></div><div class="ci-sum">'+esc(c.summary||'—')+'</div></div>';}).join('');
         el.querySelectorAll('.callitem').forEach(function(it){it.addEventListener('click',function(){openCall(it.dataset.id);});});
