@@ -19,6 +19,7 @@ import {
 import { hoursSummary, buildSystemPrompt, buildFirstMessage } from "./vapi-assistant.js";
 import { store } from "./store.js";
 import { callStore } from "./calls.js";
+import { initPersistence } from "./persist.js";
 import crypto from "crypto";
 
 const app = express();
@@ -823,4 +824,5 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
 });
 
 const PORT = process.env.PORT || 8080;
+await initPersistence(); // loads + hydrates from Postgres if DATABASE_URL is set
 app.listen(PORT, () => console.log(`Aino booking backend on :${PORT}`));

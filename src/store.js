@@ -3,6 +3,7 @@
 // methods against the Calendar API in a calendar.js and swap `store` for it.
 
 import { slotIsWithinHours } from "./config.js";
+import { markDirty } from "./persist.js";
 
 let bookings = [];
 let counter = 1000;
@@ -23,6 +24,7 @@ export const store = {
     const id = `K${counter}`;
     const booking = { id, date, time, partySize, name, phone, createdAt: new Date().toISOString() };
     bookings.push(booking);
+    markDirty();
     return booking;
   },
 
@@ -30,6 +32,15 @@ export const store = {
     return [...bookings].sort((a, b) =>
       a.date === b.date ? a.time.localeCompare(b.time) : a.date.localeCompare(b.date)
     );
+  },
+
+  // Persistence hooks (used by persist.js).
+  dump() {
+    return { bookings, counter };
+  },
+  load(d) {
+    if (d && Array.isArray(d.bookings)) bookings = d.bookings;
+    if (d && typeof d.counter === "number") counter = d.counter;
   },
 
   // Suggest up to 2 nearby free slots (same day) so the agent can offer alternatives.

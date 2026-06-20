@@ -9,6 +9,7 @@
 
 import fs from "fs";
 import path from "path";
+import { markDirty } from "./persist.js";
 
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(process.cwd(), "config.json");
 
@@ -134,6 +135,7 @@ export function updateConfig(patch) {
   }
   Object.assign(restaurant, next);
   persist();
+  markDirty();
   return restaurant;
 }
 
