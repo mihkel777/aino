@@ -62,18 +62,21 @@ app.get("/login", (req, res) => {
   const err = req.query.e ? `<p class="err">Vale parool.</p>` : "";
   res.send(`<!doctype html><html lang="et"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1"><title>Aino — logi sisse</title>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0c0d0b;color:#ece7db;font-family:'Inter',system-ui,sans-serif;}
-    .box{width:320px;max-width:90vw;text-align:center;}
-    h1{font-family:'Fraunces',serif;font-weight:400;font-size:2.2rem;margin:0 0 1.4rem;}
-    input{width:100%;background:#121310;border:1px solid rgba(236,231,219,.12);color:#ece7db;border-radius:10px;padding:.7rem .8rem;font:inherit;font-size:1rem;margin-bottom:.7rem;}
-    input:focus{outline:none;border-color:#c9a96a;}
-    button{width:100%;background:#c9a96a;color:#1a1407;border:0;border-radius:10px;padding:.75rem;font:inherit;font-weight:600;cursor:pointer;}
-    .err{color:#e6a07f;font-size:.9rem;margin:0 0 .7rem;}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f6f7f5;color:#1c2b27;font-family:'Inter',system-ui,sans-serif;}
+    .box{width:330px;max-width:90vw;text-align:center;background:#fff;border:1px solid #e4e7e2;border-radius:16px;padding:2.2rem 1.8rem;box-shadow:0 1px 2px rgba(16,40,28,.05);}
+    h1{font-weight:700;font-size:1.9rem;letter-spacing:-.01em;margin:0 0 .3rem;}
+    .sub{color:#6b7770;font-size:.85rem;margin:0 0 1.5rem;}
+    input{width:100%;background:#fff;border:1px solid #e4e7e2;color:#1c2b27;border-radius:10px;padding:.7rem .8rem;font:inherit;font-size:1rem;margin-bottom:.7rem;}
+    input:focus{outline:none;border-color:#2f7d5b;box-shadow:0 0 0 3px #e9f2ec;}
+    button{width:100%;background:#2f7d5b;color:#fff;border:0;border-radius:10px;padding:.75rem;font:inherit;font-weight:600;cursor:pointer;}
+    button:hover{background:#266a4c;}
+    .err{color:#c0563d;font-size:.9rem;margin:0 0 .7rem;}
   </style></head><body>
   <form class="box" method="POST" action="/login">
-    <h1>Aino</h1>${err}
+    <h1>Aino</h1>
+    <p class="sub">Restorani juhtpaneel</p>${err}
     <input type="password" name="password" placeholder="Parool" autofocus autocomplete="current-password">
     <button type="submit">Logi sisse</button>
   </form></body></html>`);
@@ -419,9 +422,9 @@ app.get("/", (_req, res) => {
       const h = Math.round((c / maxC) * (CH - 28));
       const x = i * (BW + GAP);
       const y = CH - h - 18;
-      const label = i % 2 === 0 ? `<text x="${(x + BW / 2).toFixed(1)}" y="${CH - 4}" text-anchor="middle" font-size="9" fill="#6f6a60">${days14[i].slice(8, 10)}.${days14[i].slice(5, 7)}</text>` : "";
-      const val = c > 0 ? `<text x="${(x + BW / 2).toFixed(1)}" y="${y - 3}" text-anchor="middle" font-size="10" fill="#9c968a">${c}</text>` : "";
-      return `<rect x="${x.toFixed(1)}" y="${y}" width="${BW.toFixed(1)}" height="${h}" rx="3" fill="#c9a96a" opacity="0.9"></rect>${val}${label}`;
+      const label = i % 2 === 0 ? `<text x="${(x + BW / 2).toFixed(1)}" y="${CH - 4}" text-anchor="middle" font-size="9" fill="#9aa39d">${days14[i].slice(8, 10)}.${days14[i].slice(5, 7)}</text>` : "";
+      const val = c > 0 ? `<text x="${(x + BW / 2).toFixed(1)}" y="${y - 3}" text-anchor="middle" font-size="10" fill="#6b7770">${c}</text>` : "";
+      return `<rect x="${x.toFixed(1)}" y="${y}" width="${BW.toFixed(1)}" height="${h}" rx="3" fill="#2f7d5b" opacity="0.9"></rect>${val}${label}`;
     })
     .join("");
   const chartSvg = `<svg viewBox="0 0 ${CW} ${CH}" width="100%" style="max-width:100%;display:block">${chartBars}</svg>`;
@@ -506,72 +509,73 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
   <title>${name} — juhtpaneel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root{--bg:#0c0d0b;--panel:#121310;--text:#ece7db;--muted:#9c968a;--gold:#c9a96a;--line:rgba(236,231,219,.10);--card:rgba(255,255,255,.035);--err:#e6a07f;}
+    :root{--bg:#f6f7f5;--panel:#ffffff;--text:#1c2b27;--muted:#6b7770;--accent:#2f7d5b;--accent-weak:#e9f2ec;--accent-strong:#266a4c;--line:#e4e7e2;--card:#ffffff;--err:#c0563d;--err-weak:#fbeee9;--info:#3b82f6;--shadow:0 1px 2px rgba(16,40,28,.05);}
     *{box-sizing:border-box;}
     body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
     .app{display:grid;grid-template-columns:248px 1fr;min-height:100vh;}
     .side{background:var(--panel);border-right:1px solid var(--line);padding:1.6rem 1rem;display:flex;flex-direction:column;}
-    .brand{font-family:'Fraunces',serif;font-size:1.55rem;margin:.2rem .6rem .2rem;}
-    .brand-sub{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin:0 .7rem 1.4rem;}
+    .brand{font-weight:700;font-size:1.4rem;letter-spacing:-.01em;margin:.2rem .6rem .2rem;}
+    .brand-sub{font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 .7rem 1.4rem;}
     .nav{display:flex;flex-direction:column;gap:.2rem;}
     .nav button{display:block;width:100%;background:none;border:0;color:var(--muted);font:inherit;font-size:.96rem;text-align:left;padding:.62rem .8rem;border-radius:10px;cursor:pointer;transition:.15s;}
-    .nav button:hover{color:var(--text);background:var(--card);}
-    .nav button.active{color:var(--text);background:rgba(201,169,106,.13);}
+    .nav button:hover{color:var(--text);background:#eef0ed;}
+    .nav button.active{color:var(--accent-strong);background:var(--accent-weak);font-weight:500;}
     .side .status{margin-top:auto;font-size:.76rem;color:var(--muted);padding:.7rem .7rem 0;border-top:1px solid var(--line);}
-    .status .dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${ready ? "#7fcf9f" : "var(--err)"};margin-right:.4rem;}
+    .status .dot{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;background:${ready ? "var(--accent)" : "var(--err)"};margin-right:.4rem;}
     .main{padding:clamp(1.6rem,4vw,3rem);max-width:860px;}
-    h1{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(1.7rem,4vw,2.1rem);margin:0 0 .4rem;}
+    h1{font-weight:600;font-size:clamp(1.6rem,4vw,2rem);letter-spacing:-.01em;margin:0 0 .4rem;}
     .lead{color:var(--muted);margin:0 0 1.8rem;line-height:1.6;}
     .sec{display:none;}
     .sec.active{display:block;animation:fade .35s ease;}
     @keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
     .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.8rem;}
-    .statc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.25rem;}
-    .statc .v{font-family:'Fraunces',serif;font-size:1.9rem;line-height:1;}
-    .statc .v.status-v{font-family:'Inter',sans-serif;font-size:1.05rem;font-weight:500;display:flex;align-items:center;gap:.5rem;padding:.35rem 0;}
-    .statc .sdot{width:.6rem;height:.6rem;border-radius:50%;flex:none;background:${ready ? "#7fcf9f" : "var(--muted)"};box-shadow:${ready ? "0 0 0 4px rgba(127,207,159,.15)" : "none"};}
+    .statc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.25rem;box-shadow:var(--shadow);}
+    .statc .v{font-weight:600;font-size:1.8rem;line-height:1;letter-spacing:-.01em;}
+    .statc .v.status-v{font-size:1.05rem;font-weight:600;display:flex;align-items:center;gap:.5rem;padding:.3rem 0;}
+    .statc .sdot{width:.6rem;height:.6rem;border-radius:50%;flex:none;background:${ready ? "var(--accent)" : "var(--muted)"};box-shadow:${ready ? "0 0 0 4px rgba(47,125,91,.13)" : "none"};}
     .statc .l{color:var(--muted);font-size:.82rem;margin-top:.45rem;}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:.4rem 1.25rem;}
-    .card-title{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:1.1rem 0 .2rem;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:.4rem 1.25rem;box-shadow:var(--shadow);}
+    .card-title{font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin:1.1rem 0 .2rem;}
     .hours-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 1.5rem;}
     .hrow{display:flex;justify-content:space-between;gap:1rem;padding:.6rem 0;border-bottom:1px solid var(--line);}
     .hrow .hday{color:var(--muted);}
     .hrow .hval{color:var(--text);font-variant-numeric:tabular-nums;}
     .hrow .hval.closed{color:var(--muted);font-style:italic;}
     .hint{color:var(--muted);font-size:.8rem;margin:.4rem 0 0;}
-    .callpanel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:1.6rem;margin-top:1.4rem;max-width:560px;}
+    .callpanel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:1.6rem;margin-top:1.4rem;max-width:560px;box-shadow:var(--shadow);}
     .callhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;}
-    .calltitle{font-family:'Fraunces',serif;font-size:1.4rem;}
+    .calltitle{font-weight:600;font-size:1.25rem;}
     .callstatus{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;}
-    .callstatus.live{color:#7fcf9f;}
+    .callstatus.live{color:var(--accent);}
     .vizrow{display:flex;align-items:center;gap:1rem;margin:.6rem 0;}
     .vizlbl{width:5.5rem;flex:none;font-size:.8rem;color:var(--muted);}
     .viz{flex:1;display:flex;align-items:center;gap:3px;height:48px;}
-    .viz .bar{flex:1;background:var(--gold);border-radius:3px;height:100%;transform:scaleY(.05);transform-origin:center;transition:transform .07s linear;opacity:.9;}
-    .viz.user .bar{background:#8fcaff;}
+    .viz .bar{flex:1;background:var(--accent);border-radius:3px;height:100%;transform:scaleY(.05);transform-origin:center;transition:transform .07s linear;opacity:.9;}
+    .viz.user .bar{background:var(--info);}
     .callbtn{margin-top:1.2rem;}
-    .callbtn.ending{background:var(--err);color:#2a0f0a;}
+    .callbtn.ending{background:var(--err);color:#fff;}
     .field{margin-bottom:1.2rem;}
-    .lbl{display:block;font-size:.85rem;color:var(--muted);margin-bottom:.45rem;}
-    input[type=text],input[type=number],input[type=time],select{background:#0c0d0b;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:.6rem .75rem;font:inherit;font-size:.95rem;max-width:100%;}
-    input:focus,select:focus{outline:none;border-color:var(--gold);}
-    input:disabled{opacity:.4;}
+    .lbl{display:block;font-size:.85rem;color:var(--muted);font-weight:500;margin-bottom:.45rem;}
+    input[type=text],input[type=number],input[type=time],select{background:#fff;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:.6rem .75rem;font:inherit;font-size:.95rem;max-width:100%;}
+    input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak);}
+    input:disabled{opacity:.5;background:#f3f4f1;}
     .row2{display:flex;gap:1rem;flex-wrap:wrap;}
     .row2 .field{flex:1;min-width:140px;}
     .dayrow{display:flex;align-items:center;gap:.75rem;padding:.55rem 0;border-bottom:1px solid var(--line);flex-wrap:wrap;}
     .dayrow .dayname{width:7rem;}
     .dayrow .sw{display:inline-flex;align-items:center;gap:.4rem;color:var(--muted);font-size:.85rem;width:6.5rem;}
     .dayrow .dash{color:var(--muted);}
-    .btn{background:var(--gold);color:#1a1407;border:0;border-radius:10px;padding:.75rem 1.5rem;font:inherit;font-weight:600;cursor:pointer;margin-top:.6rem;}
-    .btn:hover{filter:brightness(1.07);}
+    .btn{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:.7rem 1.4rem;font:inherit;font-weight:600;cursor:pointer;margin-top:.6rem;transition:background .15s;}
+    .btn:hover{background:var(--accent-strong);}
     .btn:disabled{opacity:.6;cursor:default;}
     .btn.ghost{background:none;border:1px solid var(--line);color:var(--text);font-weight:500;padding:.5rem 1rem;margin-top:.6rem;}
+    .btn.ghost:hover{background:#eef0ed;}
     .tones{display:flex;flex-wrap:wrap;gap:.5rem;}
     .toneb{background:none;border:1px solid var(--line);color:var(--muted);font:inherit;font-size:.9rem;padding:.45rem .9rem;border-radius:999px;cursor:pointer;}
-    .toneb:hover{color:var(--text);}
-    .toneb.active{background:rgba(201,169,106,.15);border-color:rgba(201,169,106,.5);color:var(--text);}
+    .toneb:hover{color:var(--text);border-color:var(--muted);}
+    .toneb.active{background:var(--accent-weak);border-color:var(--accent);color:var(--accent-strong);font-weight:500;}
     .faqrow,.taskrow{display:flex;gap:.5rem;margin-bottom:.5rem;align-items:center;}
     .faqrow .faq-q{flex:0 0 38%;}
     .faqrow .faq-a,.taskrow .task-t{flex:1;}
@@ -580,20 +584,20 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     .rmrow:hover{color:var(--err);border-color:var(--err);}
     .callwrap{display:grid;grid-template-columns:300px 1fr;gap:1rem;align-items:start;}
     .call-list{display:flex;flex-direction:column;gap:.5rem;max-height:70vh;overflow:auto;}
-    .callitem{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.8rem 1rem;cursor:pointer;}
-    .callitem:hover{border-color:rgba(201,169,106,.4);}
-    .callitem.active{border-color:var(--gold);background:rgba(201,169,106,.08);}
+    .callitem{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.8rem 1rem;cursor:pointer;box-shadow:var(--shadow);}
+    .callitem:hover{border-color:var(--accent);}
+    .callitem.active{border-color:var(--accent);background:var(--accent-weak);}
     .callitem .ci-top{display:flex;justify-content:space-between;gap:.5rem;font-size:.9rem;}
     .callitem .ci-caller{font-weight:500;}
     .callitem .ci-sum{color:var(--muted);font-size:.85rem;margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    .call-detail{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.4rem;min-height:200px;}
+    .call-detail{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.4rem;min-height:200px;box-shadow:var(--shadow);}
     .cd-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;}
-    .cd-caller{font-family:'Fraunces',serif;font-size:1.3rem;}
+    .cd-caller{font-weight:600;font-size:1.2rem;}
     .cd-meta{color:var(--muted);font-size:.85rem;margin-top:.2rem;}
-    .cd-rec{color:var(--gold);font-size:.85rem;border:1px solid rgba(201,169,106,.4);border-radius:999px;padding:.2rem .7rem;text-decoration:none;white-space:nowrap;}
-    .cd-section{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:1.1rem 0 .35rem;}
+    .cd-rec{color:var(--accent);font-size:.85rem;border:1px solid rgba(47,125,91,.4);border-radius:999px;padding:.2rem .7rem;text-decoration:none;white-space:nowrap;}
+    .cd-section{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin:1.1rem 0 .35rem;}
     .cd-text{font-size:.95rem;line-height:1.6;white-space:pre-wrap;}
-    .cd-pill{display:inline-block;background:rgba(201,169,106,.15);color:var(--gold);border-radius:999px;padding:.15rem .6rem;font-size:.8rem;}
+    .cd-pill{display:inline-block;background:var(--accent-weak);color:var(--accent-strong);border-radius:999px;padding:.15rem .6rem;font-size:.8rem;}
     .note{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem;margin-bottom:.4rem;font-size:.9rem;}
     .note .note-at{color:var(--muted);font-size:.75rem;margin-top:.2rem;}
     .noteadd{display:flex;gap:.5rem;margin-top:.6rem;}
@@ -601,14 +605,14 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     .muted{color:var(--muted);}
     @media(max-width:720px){.callwrap{grid-template-columns:1fr;}}
     .rezv{display:flex;flex-direction:column;gap:.6rem;}
-    .rez{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1rem 1.25rem;}
-    .rez-name{font-family:'Fraunces',serif;font-size:1.2rem;}
+    .rez{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1rem 1.25rem;box-shadow:var(--shadow);}
+    .rez-name{font-weight:600;font-size:1.05rem;}
     .rez-meta{color:var(--muted);font-size:.92rem;margin-top:.15rem;}
-    .rez-id{font-size:.7rem;color:var(--gold);border:1px solid rgba(201,169,106,.35);border-radius:999px;padding:.18rem .6rem;white-space:nowrap;}
+    .rez-id{font-size:.7rem;color:var(--accent-strong);background:var(--accent-weak);border:1px solid rgba(47,125,91,.25);border-radius:999px;padding:.18rem .6rem;white-space:nowrap;}
     .empty{color:var(--muted);text-align:center;padding:2.5rem 1rem;border:1px dashed var(--line);border-radius:14px;font-style:italic;}
-    .notice{background:rgba(201,120,90,.08);color:#e8c4b4;border:1px solid rgba(201,120,90,.35);border-radius:12px;padding:1rem 1.25rem;}
-    code{background:rgba(255,255,255,.06);padding:.1rem .4rem;border-radius:5px;color:var(--gold);}
-    .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(160%);background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--gold);padding:.85rem 1.25rem;border-radius:10px;transition:transform .3s ease;max-width:92vw;z-index:50;}
+    .notice{background:var(--err-weak);color:#8a3b22;border:1px solid #f0d2c6;border-radius:12px;padding:1rem 1.25rem;}
+    code{background:#eef1ee;padding:.1rem .4rem;border-radius:5px;color:var(--accent-strong);}
+    .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(160%);background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);padding:.85rem 1.25rem;border-radius:10px;box-shadow:0 8px 28px rgba(16,40,28,.12);transition:transform .3s ease;max-width:92vw;z-index:50;}
     .toast.show{transform:translateX(-50%) translateY(0);}
     .toast.err{border-left-color:var(--err);}
     @media(max-width:720px){.app{grid-template-columns:1fr;}.side{flex-direction:column;}.nav{flex-direction:row;flex-wrap:wrap;}.side .status{display:none;}}
@@ -624,7 +628,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         <button data-sec="calls">Vestlused</button>
         <button data-sec="bookings">Broneeringud</button>
       </nav>
-      <div class="status"><span class="dot"></span>${ready ? "Assistent ühendatud" : "Assistent seadistamata"}${DASHBOARD_PASSWORD ? ` · <a href="/logout" style="color:var(--gold)">Logi välja</a>` : ""}</div>
+      <div class="status"><span class="dot"></span>${ready ? "Assistent ühendatud" : "Assistent seadistamata"}${DASHBOARD_PASSWORD ? ` · <a href="/logout" style="color:var(--accent)">Logi välja</a>` : ""}</div>
     </aside>
     <main class="main">
       <section class="sec active" id="sec-overview">
@@ -688,7 +692,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         <div class="field" style="margin-top:2.2rem">
           <label class="lbl">Assistendi tekst (kleebi Vapisse)</label>
           <p class="lead" style="margin:0 0 .6rem">Lahtiolekuajad ja kohad rakenduvad kohe. Kui muudad nime või tervitust, kopeeri allolev tekst ja kleebi see Vapi assistendi seadetesse (System Prompt + First Message).</p>
-          <textarea id="assistant-text" readonly rows="10" style="width:100%;background:#0c0d0b;border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:.75rem;font-family:ui-monospace,monospace;font-size:.82rem;line-height:1.5;">${assistantText}</textarea>
+          <textarea id="assistant-text" readonly rows="10" style="width:100%;background:#f6f7f5;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:.75rem;font-family:ui-monospace,monospace;font-size:.82rem;line-height:1.5;">${assistantText}</textarea>
           <button class="btn" id="copy-assistant" style="background:none;border:1px solid var(--line);color:var(--text)">Kopeeri tekst</button>
         </div>
       </section>
