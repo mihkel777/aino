@@ -20,6 +20,7 @@ import { hoursSummary, buildSystemPrompt, buildFirstMessage } from "./vapi-assis
 import { store } from "./store.js";
 import { callStore } from "./calls.js";
 import { initPersistence } from "./persist.js";
+import { sendBookingSms } from "./sms.js";
 import crypto from "crypto";
 
 const app = express();
@@ -223,7 +224,8 @@ app.post("/tools/book-table", (req, res) => {
   const time = normaliseTime(args.time);
   const partySize = parseInt(args.partySize ?? args.party_size, 10);
   const name = (args.name || "").toString().trim();
-  const phone = (args.phone || "").toString().trim();
+  // Prefer a phone the assistant captured; fall back to the live caller's number.
+  const phone = (args.phone || req.body?.message?.call?.customer?.number || "").toString().trim();
 
   if (!date || !time || !Number.isFinite(partySize) || !name) {
     return ok(res, id, "Broneeringuks vajan kuupäeva, kellaaega, inimeste arvu ja nime.");
@@ -237,6 +239,10 @@ app.post("/tools/book-table", (req, res) => {
   }
 
   const booking = store.addBooking({ date, time, partySize, name, phone });
+  // Fire-and-forget SMS confirmation (never blocks the agent's reply).
+  sendBookingSms(booking, restaurant)
+    .then((r) => console.log(r.sent ? `[sms] sent to ${phone}` : `[sms] skipped: ${r.reason}`))
+    .catch(() => {});
   return ok(res, id, {
     booked: true,
     confirmation: booking.id,
@@ -672,6 +678,11 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
           <div id="tasks">${taskRows}</div>
           <button type="button" class="btn ghost" id="add-task">+ Lisa ülesanne</button>
         </div>
+        <div class="field">
+          <label class="lbl">Teavitused</label>
+          <label class="sw" style="width:auto"><input type="checkbox" id="f-sms"${restaurant.smsConfirmations ? " checked" : ""}> Saada külalisele broneeringu kinnitus SMS-iga</label>
+          <p class="hint">Vajab Twilio seadistust serveris (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER).</p>
+        </div>
         <button class="btn" id="save">Salvesta</button>
 
         <div class="field" style="margin-top:2.2rem">
@@ -741,7 +752,8 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       var tasks=[];
       document.querySelectorAll('#tasks .taskrow').forEach(function(r){var v=r.querySelector('.task-t').value.trim();if(v){tasks.push(v);}});
       var tb=document.querySelector('#tones .toneb.active');
-      return {name:document.getElementById('f-name').value,capacity:parseInt(document.getElementById('f-capacity').value,10),maxPartySize:parseInt(document.getElementById('f-maxparty').value,10),slotMinutes:parseInt(document.getElementById('f-slot').value,10),hours:hours,greetingTone:tb?tb.dataset.tone:'soe',faqs:faqs,tasks:tasks};
+      var smsEl=document.getElementById('f-sms');
+      return {name:document.getElementById('f-name').value,capacity:parseInt(document.getElementById('f-capacity').value,10),maxPartySize:parseInt(document.getElementById('f-maxparty').value,10),slotMinutes:parseInt(document.getElementById('f-slot').value,10),hours:hours,greetingTone:tb?tb.dataset.tone:'soe',faqs:faqs,tasks:tasks,smsConfirmations:smsEl?smsEl.checked:true};
     }
     var saveBtn=document.getElementById('save');
     saveBtn.addEventListener('click',function(){

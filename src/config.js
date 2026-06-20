@@ -31,6 +31,7 @@ const defaults = {
   greetingTone: "soe", // otsekohene | soe | ametlik | hõivatud
   faqs: [], // [{ q, a }] knowledge the assistant can answer
   tasks: [], // ["kui X, siis tee Y"] action instructions
+  smsConfirmations: true, // text the guest after a booking (needs Twilio env)
 };
 
 export const TONES = ["otsekohene", "soe", "ametlik", "hõivatud"];
@@ -101,6 +102,9 @@ export function validateConfig(patch) {
   }
   if (patch.greetingTone !== undefined && !TONES.includes(patch.greetingTone)) {
     throw new Error("Tundmatu tervituse toon.");
+  }
+  if (patch.smsConfirmations !== undefined && typeof patch.smsConfirmations !== "boolean") {
+    throw new Error("SMS-kinnituse seade on vigane.");
   }
   if (patch.faqs !== undefined) {
     if (!Array.isArray(patch.faqs)) throw new Error("KKK on vigane.");
