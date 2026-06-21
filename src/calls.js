@@ -13,6 +13,8 @@ export const callStore = {
       id: record.id || `c-${Date.now()}-${counter}`,
       createdAt: record.createdAt || new Date().toISOString(),
       caller: record.caller || "Tundmatu",
+      name: record.name || "", // booking name made during the call, if any
+
       durationSec: record.durationSec || 0,
       summary: record.summary || "",
       transcript: record.transcript || "",

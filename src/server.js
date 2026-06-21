@@ -242,6 +242,13 @@ app.post("/tools/book-table", (req, res) => {
   }
 
   const booking = store.addBooking({ date, time, partySize, name, phone });
+  // Remember the guest name against the call id so the conversation (from the
+  // end-of-call webhook) can show a name instead of "Tundmatu".
+  const callId = req.body?.message?.call?.id;
+  if (callId) {
+    bookingNameByCall.set(callId, name);
+    if (bookingNameByCall.size > 1000) bookingNameByCall.delete(bookingNameByCall.keys().next().value);
+  }
   // Fire-and-forget SMS confirmation (never blocks the agent's reply).
   sendBookingSms(booking, restaurant)
     .then((r) => console.log(r.sent ? `[sms] sent to ${phone}` : `[sms] skipped: ${r.reason}`))
@@ -266,6 +273,9 @@ app.get("/api/bookings", (_req, res) => {
 // Configure this URL as the assistant's Server URL in Vapi, with a secret.
 // We verify the secret (NOT the account key) -> zero-key posture preserved.
 
+// Guest name captured during a call (callId -> name), set by the book-table tool.
+const bookingNameByCall = new Map();
+
 function parseEndOfCall(msg) {
   const call = msg.call || {};
   const analysis = msg.analysis || {};
@@ -276,11 +286,13 @@ function parseEndOfCall(msg) {
   const transcript = msg.transcript || artifact.transcript || "";
   const caller =
     (msg.customer && msg.customer.number) || (call.customer && call.customer.number) || "Tundmatu";
+  const id = call.id || msg.callId;
   const sd = analysis.structuredData || {};
   return {
-    id: call.id || msg.callId,
+    id,
     createdAt: msg.startedAt || call.startedAt || new Date().toISOString(),
     caller,
+    name: bookingNameByCall.get(id) || "",
     durationSec,
     summary: msg.summary || analysis.summary || "",
     transcript: typeof transcript === "string" ? transcript : JSON.stringify(transcript),
@@ -327,7 +339,7 @@ app.get("/api/calls", (_req, res) => {
     calls: callStore.all().map((c) => ({
       id: c.id,
       createdAt: c.createdAt,
-      caller: c.caller,
+      caller: c.name || c.caller,
       durationSec: c.durationSec,
       summary: c.summary,
       outcome: c.outcome,
@@ -340,7 +352,12 @@ app.get("/api/calls", (_req, res) => {
 app.get("/api/calls/:id", (req, res) => {
   const c = callStore.get(req.params.id);
   if (!c) return res.status(404).json({ ok: false });
-  res.json(c);
+  // Relabel transcript speakers: AI -> restaurant name, User -> guest/booking name.
+  const guest = c.name || "Klient";
+  const transcript = (c.transcript || "")
+    .replace(/(^|\n)\s*AI:/g, `$1${restaurant.name}:`)
+    .replace(/(^|\n)\s*(User|Klient|Customer):/g, `$1${guest}:`);
+  res.json({ ...c, caller: c.name || c.caller, transcript });
 });
 
 app.post("/api/calls/:id/notes", (req, res) => {
@@ -638,7 +655,6 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
           <div class="statc"><div class="v" id="kpi-calls">${allCalls.length}</div><div class="l">Kõnesid kokku</div></div>
           <div class="statc"><div class="v" id="kpi-calltime">${fmtCallTime(totalCallSec)}</div><div class="l">Kõneaeg kokku</div></div>
           <div class="statc"><div class="v" id="stat-total">${bookings.length}</div><div class="l">Broneeringut kokku</div></div>
-          <div class="statc"><div class="v" id="kpi-sat">${satPct}</div><div class="l">Rahulolu</div></div>
         </div>
         <div class="cards">
           <div class="statc"><div class="v" id="stat-today">${todayCount}</div><div class="l">Broneeringut täna</div></div>
@@ -681,11 +697,6 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
           <p class="hint" style="margin:0 0 .6rem">Juhised tegevusteks, nt "kui klient küsib sündmuse kohta, ütle et keegi võtab ühendust".</p>
           <div id="tasks">${taskRows}</div>
           <button type="button" class="btn ghost" id="add-task">+ Lisa ülesanne</button>
-        </div>
-        <div class="field">
-          <label class="lbl">Teavitused</label>
-          <label class="sw" style="width:auto"><input type="checkbox" id="f-sms"${restaurant.smsConfirmations ? " checked" : ""}> Saada külalisele broneeringu kinnitus SMS-iga</label>
-          <p class="hint">Vajab Twilio seadistust serveris (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER).</p>
         </div>
         <button class="btn" id="save">Salvesta</button>
 
@@ -756,8 +767,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       var tasks=[];
       document.querySelectorAll('#tasks .taskrow').forEach(function(r){var v=r.querySelector('.task-t').value.trim();if(v){tasks.push(v);}});
       var tb=document.querySelector('#tones .toneb.active');
-      var smsEl=document.getElementById('f-sms');
-      return {name:document.getElementById('f-name').value,capacity:parseInt(document.getElementById('f-capacity').value,10),maxPartySize:parseInt(document.getElementById('f-maxparty').value,10),slotMinutes:parseInt(document.getElementById('f-slot').value,10),hours:hours,greetingTone:tb?tb.dataset.tone:'soe',faqs:faqs,tasks:tasks,smsConfirmations:smsEl?smsEl.checked:true};
+      return {name:document.getElementById('f-name').value,capacity:parseInt(document.getElementById('f-capacity').value,10),maxPartySize:parseInt(document.getElementById('f-maxparty').value,10),slotMinutes:parseInt(document.getElementById('f-slot').value,10),hours:hours,greetingTone:tb?tb.dataset.tone:'soe',faqs:faqs,tasks:tasks};
     }
     var saveBtn=document.getElementById('save');
     saveBtn.addEventListener('click',function(){
@@ -824,8 +834,6 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         var kc=document.getElementById('kpi-calls');if(kc){kc.textContent=list.length;}
         var totalSec=list.reduce(function(a,c){return a+(c.durationSec||0);},0);
         var kt=document.getElementById('kpi-calltime');if(kt){kt.textContent=fmtCallTimeJS(totalSec);}
-        var ev=list.filter(function(c){return c.success===true||c.success===false;});
-        var ks=document.getElementById('kpi-sat');if(ks){ks.textContent=ev.length?Math.round(100*ev.filter(function(c){return c.success===true;}).length/ev.length)+'%':'—';}
         var el=document.getElementById('call-list');if(!el){return;}
         if(!list.length){el.innerHTML='<div class="empty">Veel vestlusi pole.</div>';return;}
         el.innerHTML=list.map(function(c){return '<div class="callitem'+(c.id===selectedCall?' active':'')+'" data-id="'+esc(c.id)+'"><div class="ci-top"><span class="ci-caller">'+esc(c.caller)+'</span><span class="muted">'+fmtDur(c.durationSec)+'</span></div><div class="ci-sum">'+esc(c.summary||'—')+'</div></div>';}).join('');
