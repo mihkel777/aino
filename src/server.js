@@ -893,10 +893,10 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       var rows='';
       for(var m=open;m<=close-step;m+=step){
         var hh=pad(Math.floor(m/60))+':'+pad(m%60);
-        var bs=dayBk.filter(function(b){return b.time===hh;});
+        var bs=dayBk.filter(function(b){var bm=hm(b.time);return bm>=m && bm<m+step;});
         var used=bs.reduce(function(a,b){return a+(b.partySize||0);},0);
         var free=Math.max(0,cap-used);
-        var chips=bs.map(function(b){return '<span class="bk">'+esc(b.name)+' · '+esc(b.partySize)+'</span>';}).join('');
+        var chips=bs.map(function(b){var off=(hm(b.time)!==m)?' · '+esc(b.time):'';return '<span class="bk">'+esc(b.name)+' · '+esc(b.partySize)+off+'</span>';}).join('');
         var pct=Math.min(100,Math.round(used/cap*100));
         rows+='<div class="slot'+(free===0?' full':'')+'">'
           +'<div class="slot-time">'+hh+'</div>'
