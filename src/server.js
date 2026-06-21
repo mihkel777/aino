@@ -288,11 +288,27 @@ function parseEndOfCall(msg) {
     (msg.customer && msg.customer.number) || (call.customer && call.customer.number) || "Tundmatu";
   const id = call.id || msg.callId;
   const sd = analysis.structuredData || {};
+  // Resolve the guest name: prefer the call-id link, else match the booking made
+  // during this call by time window (works even when ids don't line up).
+  let name = (id && bookingNameByCall.get(id)) || "";
+  if (!name) {
+    let start = Date.parse(msg.startedAt || call.startedAt || "");
+    if (!start) start = Date.now() - durationSec * 1000;
+    const end = Date.parse(msg.endedAt || "") || start + durationSec * 1000;
+    const m = store
+      .allBookings()
+      .filter((b) => {
+        const t = Date.parse(b.createdAt || "");
+        return t && t >= start - 90000 && t <= end + 90000;
+      })
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+    if (m) name = m.name;
+  }
   return {
     id,
     createdAt: msg.startedAt || call.startedAt || new Date().toISOString(),
     caller,
-    name: bookingNameByCall.get(id) || "",
+    name,
     durationSec,
     summary: msg.summary || analysis.summary || "",
     transcript: typeof transcript === "string" ? transcript : JSON.stringify(transcript),
@@ -614,6 +630,12 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     .cd-rec{color:var(--accent);font-size:.85rem;border:1px solid rgba(47,125,91,.4);border-radius:999px;padding:.2rem .7rem;text-decoration:none;white-space:nowrap;}
     .cd-section{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin:1.1rem 0 .35rem;}
     .cd-text{font-size:.95rem;line-height:1.6;white-space:pre-wrap;}
+    .transcript{white-space:normal;}
+    .tline{margin:.18rem 0;}
+    .tspk{font-weight:600;}
+    .tspk:after{content:":";}
+    .tspk.ai{color:var(--accent);}
+    .tspk.guest{color:var(--info);}
     .cd-pill{display:inline-block;background:var(--accent-weak);color:var(--accent-strong);border-radius:999px;padding:.15rem .6rem;font-size:.8rem;}
     .note{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem;margin-bottom:.4rem;font-size:.9rem;}
     .note .note-at{color:var(--muted);font-size:.75rem;margin-top:.2rem;}
@@ -733,6 +755,19 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
   <script>
   (function(){
     function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+    var REST=${JSON.stringify(restaurant.name)};
+    function renderTranscript(t){
+      if(!t){return '<span class="muted">—</span>';}
+      return t.split('\\n').map(function(line){
+        var i=line.indexOf(': ');
+        if(i>0 && i<=40){
+          var spk=line.slice(0,i);
+          var cls=(spk===REST)?'tspk ai':'tspk guest';
+          return '<div class="tline"><span class="'+cls+'">'+esc(spk)+'</span> '+esc(line.slice(i+2))+'</div>';
+        }
+        return '<div class="tline">'+esc(line)+'</div>';
+      }).join('');
+    }
     var navs=document.querySelectorAll('.nav button');
     var secs=document.querySelectorAll('.sec');
     navs.forEach(function(btn){btn.addEventListener('click',function(){
@@ -814,7 +849,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       var el=document.getElementById('call-detail');if(!el)return;
       var rec=c.recordingUrl?'<a class="cd-rec" href="'+esc(c.recordingUrl)+'" target="_blank" rel="noopener">Salvestus</a>':'';
       var outcome=c.outcome?'<div class="cd-section">Tulemus</div><div><span class="cd-pill">'+esc(c.outcome)+'</span></div>':'';
-      el.innerHTML='<div class="cd-head"><div><div class="cd-caller">'+esc(c.caller)+'</div><div class="cd-meta">'+fmtDate(c.createdAt)+' · '+fmtDur(c.durationSec)+'</div></div>'+rec+'</div>'+outcome+'<div class="cd-section">Kokkuvõte</div><div class="cd-text">'+(c.summary?esc(c.summary):'<span class="muted">—</span>')+'</div><div class="cd-section">Transkriptsioon</div><div class="cd-text">'+(c.transcript?esc(c.transcript):'<span class="muted">—</span>')+'</div><div class="cd-section">Märkmed</div><div id="notes">'+notesHtml(c.notes)+'</div><div class="noteadd"><input type="text" id="note-input" placeholder="Lisa märkus..."><button class="btn" id="note-add">Lisa</button></div>';
+      el.innerHTML='<div class="cd-head"><div><div class="cd-caller">'+esc(c.caller)+'</div><div class="cd-meta">'+fmtDate(c.createdAt)+' · '+fmtDur(c.durationSec)+'</div></div>'+rec+'</div>'+outcome+'<div class="cd-section">Kokkuvõte</div><div class="cd-text">'+(c.summary?esc(c.summary):'<span class="muted">—</span>')+'</div><div class="cd-section">Transkriptsioon</div><div class="cd-text transcript">'+renderTranscript(c.transcript)+'</div><div class="cd-section">Märkmed</div><div id="notes">'+notesHtml(c.notes)+'</div><div class="noteadd"><input type="text" id="note-input" placeholder="Lisa märkus..."><button class="btn" id="note-add">Lisa</button></div>';
       var addBtn=document.getElementById('note-add');
       addBtn.addEventListener('click',function(){
         var inp=document.getElementById('note-input');var t=inp.value.trim();if(!t){return;}addBtn.disabled=true;
