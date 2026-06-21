@@ -619,8 +619,8 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
   </style></head><body>
   <div class="app">
     <aside class="side">
-      <div class="brand brand-rest">${name}</div>
-      <div class="brand-sub">Aino · juhtpaneel</div>
+      <div class="brand">Aino</div>
+      <div class="brand-sub">juhtpaneel</div>
       <nav class="nav">
         <button class="active" data-sec="overview">Ülevaade</button>
         <button data-sec="settings">Seaded</button>
