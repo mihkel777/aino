@@ -660,6 +660,9 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     .tspk.ai{color:var(--accent);}
     .tspk.guest{color:var(--info);}
     .cd-pill{display:inline-block;background:var(--accent-weak);color:var(--accent-strong);border-radius:999px;padding:.15rem .6rem;font-size:.8rem;}
+    .exrow{font-size:.82rem;color:var(--muted);margin-top:.6rem;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;}
+    .exchip{background:var(--accent-weak);color:var(--accent-strong);border:1px solid rgba(47,125,91,.25);border-radius:999px;padding:.2rem .7rem;font:inherit;font-size:.82rem;cursor:pointer;}
+    .exchip:hover{filter:brightness(.97);}
     .note{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem;margin-bottom:.4rem;font-size:.9rem;}
     .note .note-at{color:var(--muted);font-size:.75rem;margin-top:.2rem;}
     .noteadd{display:flex;gap:.5rem;margin-top:.6rem;}
@@ -751,12 +754,23 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
           <p class="hint" style="margin:0 0 .6rem">Assistent vastab nende põhjal, kui klient küsib.</p>
           <div id="faqs">${faqRows}</div>
           <button type="button" class="btn ghost" id="add-faq">+ Lisa küsimus</button>
+          <div class="exrow" id="faq-examples">Näited (klõpsa, et lisada):
+            <button type="button" class="exchip" data-q="Kas teil on parkimine?" data-a="Jah, klientidele on tasuta parkla maja taga.">Parkimine</button>
+            <button type="button" class="exchip" data-q="Kas menüüs on taimetoite?" data-a="Jah, meil on mitu maitsvat taimset rooga.">Taimetoidud</button>
+            <button type="button" class="exchip" data-q="Kas lemmikloomad on lubatud?" data-a="Lemmikloomad on teretulnud terrassil.">Lemmikloomad</button>
+            <button type="button" class="exchip" data-q="Kus te asute?" data-a="Asume Tallinnas vanalinnas, Pikk tänav 5.">Asukoht</button>
+          </div>
         </div>
         <div class="field">
           <label class="lbl">Ülesanded</label>
           <p class="hint" style="margin:0 0 .6rem">Juhised tegevusteks, nt "kui klient küsib sündmuse kohta, ütle et keegi võtab ühendust".</p>
           <div id="tasks">${taskRows}</div>
           <button type="button" class="btn ghost" id="add-task">+ Lisa ülesanne</button>
+          <div class="exrow" id="task-examples">Näited (klõpsa, et lisada):
+            <button type="button" class="exchip" data-t="Kui klient küsib suurema ürituse või peo kohta, ütle viisakalt, et keegi võtab temaga ühendust.">Üritused</button>
+            <button type="button" class="exchip" data-t="Kui klient küsib allergeenide kohta, soovita täpsustada need kohapeal teenindajaga.">Allergiad</button>
+            <button type="button" class="exchip" data-t="Kui klient soovib broneeringut muuta või tühistada, ütle et selleks palun helistada restorani otse.">Muudatused</button>
+          </div>
         </div>
         <button class="btn" id="save">Salvesta</button>
 
@@ -833,6 +847,8 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     var addTask=document.getElementById('add-task');if(addTask){addTask.addEventListener('click',function(){document.getElementById('tasks').appendChild(taskRowEl());});}
     var faqsBox=document.getElementById('faqs');if(faqsBox){faqsBox.addEventListener('click',function(e){if(e.target.classList.contains('rmrow')){e.target.closest('.faqrow').remove();}});}
     var tasksBox=document.getElementById('tasks');if(tasksBox){tasksBox.addEventListener('click',function(e){if(e.target.classList.contains('rmrow')){e.target.closest('.taskrow').remove();}});}
+    var faqEx=document.getElementById('faq-examples');if(faqEx){faqEx.addEventListener('click',function(e){if(e.target.classList.contains('exchip')){var row=faqRowEl();row.querySelector('.faq-q').value=e.target.getAttribute('data-q');row.querySelector('.faq-a').value=e.target.getAttribute('data-a');document.getElementById('faqs').appendChild(row);}});}
+    var taskEx=document.getElementById('task-examples');if(taskEx){taskEx.addEventListener('click',function(e){if(e.target.classList.contains('exchip')){var row=taskRowEl();row.querySelector('.task-t').value=e.target.getAttribute('data-t');document.getElementById('tasks').appendChild(row);}});}
     var toastEl=document.getElementById('toast');var tt;
     function toast(msg,ok){toastEl.textContent=msg;toastEl.className='toast show'+(ok?'':' err');clearTimeout(tt);tt=setTimeout(function(){toastEl.className='toast'+(ok?'':' err');},6000);}
     function collect(){
