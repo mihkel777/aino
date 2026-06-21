@@ -19,7 +19,7 @@ import {
 import { hoursSummary, buildSystemPrompt, buildFirstMessage } from "./vapi-assistant.js";
 import { store } from "./store.js";
 import { callStore } from "./calls.js";
-import { initPersistence } from "./persist.js";
+import { initPersistence, markDirty } from "./persist.js";
 import { sendBookingSms } from "./sms.js";
 import crypto from "crypto";
 
@@ -62,6 +62,7 @@ app.get("/login", (req, res) => {
   const err = req.query.e ? `<p class="err">Vale parool.</p>` : "";
   res.send(`<!doctype html><html lang="et"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1"><title>Aino — logi sisse</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232f7d5b'/><circle cx='16' cy='15' r='8' fill='none' stroke='white' stroke-width='2.4'/><path d='M11 21 l-1.6 3.4 4.2-2.2' fill='white'/></svg>">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f6f7f5;color:#1c2b27;font-family:'Inter',system-ui,sans-serif;}
@@ -276,6 +277,34 @@ app.get("/api/bookings", (_req, res) => {
 // Guest name captured during a call (callId -> name), set by the book-table tool.
 const bookingNameByCall = new Map();
 
+// Find the name of a booking made during a [startMs,endMs] window (±90s slack).
+function matchBookingName(startMs, endMs) {
+  if (!startMs) return "";
+  const m = store
+    .allBookings()
+    .filter((b) => {
+      const t = Date.parse(b.createdAt || "");
+      return t && t >= startMs - 90000 && t <= endMs + 90000;
+    })
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+  return m ? m.name : "";
+}
+
+// One-time pass: name any stored calls that predate name-resolution.
+function backfillCallNames() {
+  let changed = false;
+  callStore.all().forEach((c) => {
+    if (c.name) return;
+    const start = Date.parse(c.createdAt || "");
+    const n = matchBookingName(start, (start || 0) + (c.durationSec || 0) * 1000);
+    if (n) {
+      c.name = n;
+      changed = true;
+    }
+  });
+  if (changed) markDirty();
+}
+
 function parseEndOfCall(msg) {
   const call = msg.call || {};
   const analysis = msg.analysis || {};
@@ -295,14 +324,7 @@ function parseEndOfCall(msg) {
     let start = Date.parse(msg.startedAt || call.startedAt || "");
     if (!start) start = Date.now() - durationSec * 1000;
     const end = Date.parse(msg.endedAt || "") || start + durationSec * 1000;
-    const m = store
-      .allBookings()
-      .filter((b) => {
-        const t = Date.parse(b.createdAt || "");
-        return t && t >= start - 90000 && t <= end + 90000;
-      })
-      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
-    if (m) name = m.name;
+    name = matchBookingName(start, end);
   }
   return {
     id,
@@ -539,7 +561,8 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
 
   res.send(`<!doctype html><html lang="et"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${name} — juhtpaneel</title>
+  <title>Aino — ${name}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232f7d5b'/><circle cx='16' cy='15' r='8' fill='none' stroke='white' stroke-width='2.4'/><path d='M11 21 l-1.6 3.4 4.2-2.2' fill='white'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -649,6 +672,21 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     .rez-meta{color:var(--muted);font-size:.92rem;margin-top:.15rem;}
     .rez-id{font-size:.7rem;color:var(--accent-strong);background:var(--accent-weak);border:1px solid rgba(47,125,91,.25);border-radius:999px;padding:.18rem .6rem;white-space:nowrap;}
     .empty{color:var(--muted);text-align:center;padding:2.5rem 1rem;border:1px dashed var(--line);border-radius:14px;font-style:italic;}
+    .calnav{display:flex;align-items:center;gap:.6rem;margin:0 0 1rem;}
+    .caldate{font-weight:600;min-width:13rem;text-transform:capitalize;}
+    .calnav .btn{margin-top:0;padding:.4rem .8rem;}
+    .cal{display:flex;flex-direction:column;gap:.4rem;}
+    .slot{display:grid;grid-template-columns:4.2rem 1fr 5.5rem;align-items:center;gap:.9rem;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.6rem .9rem;box-shadow:var(--shadow);}
+    .slot.full{border-color:#e9ccc4;}
+    .slot-time{font-weight:600;font-variant-numeric:tabular-nums;}
+    .slot-books{display:flex;flex-wrap:wrap;gap:.4rem;min-height:1.4rem;}
+    .bk{background:var(--accent-weak);color:var(--accent-strong);border:1px solid rgba(47,125,91,.25);border-radius:999px;padding:.12rem .6rem;font-size:.85rem;white-space:nowrap;}
+    .slot-free{justify-self:end;font-size:.82rem;color:var(--muted);text-align:right;}
+    .slot-free b{color:var(--accent);}
+    .slot-free.none b{color:var(--err);}
+    .slot-bar{grid-column:1 / -1;height:4px;border-radius:3px;background:var(--accent-weak);overflow:hidden;margin-top:.1rem;}
+    .slot-bar > span{display:block;height:100%;background:var(--accent);}
+    .calempty{color:var(--muted);font-style:italic;padding:1.2rem 0;}
     .notice{background:var(--err-weak);color:#8a3b22;border:1px solid #f0d2c6;border-radius:12px;padding:1rem 1.25rem;}
     code{background:#eef1ee;padding:.1rem .4rem;border-radius:5px;color:var(--accent-strong);}
     .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(160%);background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);padding:.85rem 1.25rem;border-radius:10px;box-shadow:0 8px 28px rgba(16,40,28,.12);transition:transform .3s ease;max-width:92vw;z-index:50;}
@@ -680,7 +718,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         </div>
         <div class="cards">
           <div class="statc"><div class="v" id="stat-today">${todayCount}</div><div class="l">Broneeringut täna</div></div>
-          <div class="statc"><div class="v">${restaurant.capacity}</div><div class="l">Kohti korraga</div></div>
+          <div class="statc"><div class="v">${restaurant.capacity}</div><div class="l">Mahutavus</div></div>
           <div class="statc"><div class="v status-v"><span class="sdot"></span>${ready ? "Ühendatud" : "Seadistamata"}</div><div class="l">Assistent</div></div>
         </div>
         <p class="card-title">Kõnede maht (14 päeva)</p>
@@ -699,7 +737,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
         <p class="lead">Muuda restorani andmeid ja lahtiolekuaegu. Broneerimisreeglid rakenduvad kohe.</p>
         <div class="field"><label class="lbl">Restorani nimi</label><input type="text" id="f-name" value="${name}"></div>
         <div class="row2">
-          <div class="field"><label class="lbl">Kohti korraga</label><input type="number" id="f-capacity" min="1" value="${restaurant.capacity}"><p class="hint">Mitu kohta saab ühe ajavahemiku jooksul broneerida.</p></div>
+          <div class="field"><label class="lbl">Mahutavus</label><input type="number" id="f-capacity" min="1" value="${restaurant.capacity}"><p class="hint">Mitu kohta saab ühe ajavahemiku jooksul broneerida.</p></div>
           <div class="field"><label class="lbl">Maks. seltskond</label><input type="number" id="f-maxparty" min="1" value="${restaurant.maxPartySize}"><p class="hint">Suuremad seltskonnad suunatakse kodulehele.</p></div>
           <div class="field"><label class="lbl">Broneeringu samm</label><select id="f-slot">${slotOpts}</select><p class="hint">Ajavahemike pikkus.</p></div>
         </div>
@@ -746,8 +784,14 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
 
       <section class="sec" id="sec-bookings">
         <h1>Broneeringud</h1>
-        <p class="lead">Reaalajas — uueneb automaatselt.</p>
-        <div id="rezv" class="rezv"><div class="empty">Laen…</div></div>
+        <p class="lead">Päeva ülevaade ajavahemike kaupa — uueneb automaatselt.</p>
+        <div class="calnav">
+          <button type="button" class="btn ghost" id="cal-prev">‹</button>
+          <div class="caldate" id="cal-date"></div>
+          <button type="button" class="btn ghost" id="cal-next">›</button>
+          <button type="button" class="btn ghost" id="cal-today">Täna</button>
+        </div>
+        <div id="cal" class="cal"><div class="empty">Laen…</div></div>
       </section>
     </main>
   </div>
@@ -756,6 +800,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
   (function(){
     function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
     var REST=${JSON.stringify(restaurant.name)};
+    var CFG=${JSON.stringify({ capacity: restaurant.capacity, slotMinutes: restaurant.slotMinutes, hours: restaurant.hours })};
     function renderTranscript(t){
       if(!t){return '<span class="muted">—</span>';}
       return t.split('\\n').map(function(line){
@@ -827,16 +872,51 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
       navigator.clipboard.writeText(ta.value).then(function(){toast('Tekst kopeeritud. Kleebi see Vapisse.',true);},function(){ta.select();toast('Vajuta Ctrl/Cmd+C, et kopeerida.',true);});
     });}
     var today=new Date().toISOString().slice(0,10);
+    var allBookings=[];
+    var calDate=today;
+    var DOW=['Pühapäev','Esmaspäev','Teisipäev','Kolmapäev','Neljapäev','Reede','Laupäev'];
+    var MON=['jaan','veebr','märts','apr','mai','juuni','juuli','aug','sept','okt','nov','dets'];
+    function hm(t){var p=t.split(':');return parseInt(p[0],10)*60+parseInt(p[1],10);}
+    function pad(n){return (n<10?'0':'')+n;}
+    function fmtCalHead(ds){var d=new Date(ds+'T00:00:00');return DOW[d.getDay()]+', '+d.getDate()+'. '+MON[d.getMonth()];}
+    function shiftDate(ds,delta){var d=new Date(ds+'T00:00:00');d.setDate(d.getDate()+delta);return d.toISOString().slice(0,10);}
+    function renderCal(){
+      var el=document.getElementById('cal');var dl=document.getElementById('cal-date');
+      if(!el) return;
+      if(dl) dl.textContent=fmtCalHead(calDate);
+      var dow=new Date(calDate+'T00:00:00').getDay();
+      var h=CFG.hours[dow];
+      if(!h){el.innerHTML='<div class="calempty">Sel päeval on restoran suletud.</div>';return;}
+      var step=CFG.slotMinutes||30, cap=CFG.capacity||1;
+      var open=hm(h.open), close=hm(h.close);
+      var dayBk=allBookings.filter(function(b){return b.date===calDate;});
+      var rows='';
+      for(var m=open;m<=close-step;m+=step){
+        var hh=pad(Math.floor(m/60))+':'+pad(m%60);
+        var bs=dayBk.filter(function(b){return b.time===hh;});
+        var used=bs.reduce(function(a,b){return a+(b.partySize||0);},0);
+        var free=Math.max(0,cap-used);
+        var chips=bs.map(function(b){return '<span class="bk">'+esc(b.name)+' · '+esc(b.partySize)+'</span>';}).join('');
+        var pct=Math.min(100,Math.round(used/cap*100));
+        rows+='<div class="slot'+(free===0?' full':'')+'">'
+          +'<div class="slot-time">'+hh+'</div>'
+          +'<div class="slot-books">'+(chips||'<span class="muted" style="font-size:.85rem">—</span>')+'</div>'
+          +'<div class="slot-free'+(free===0?' none':'')+'"><b>'+free+'</b> vaba</div>'
+          +'<div class="slot-bar"><span style="width:'+pct+'%"></span></div>'
+          +'</div>';
+      }
+      el.innerHTML=rows||'<div class="calempty">Ajavahemikke pole.</div>';
+    }
+    var cp=document.getElementById('cal-prev'),cn=document.getElementById('cal-next'),ct=document.getElementById('cal-today');
+    if(cp)cp.addEventListener('click',function(){calDate=shiftDate(calDate,-1);renderCal();});
+    if(cn)cn.addEventListener('click',function(){calDate=shiftDate(calDate,1);renderCal();});
+    if(ct)ct.addEventListener('click',function(){calDate=today;renderCal();});
     function loadRezv(){
       fetch('/api/bookings',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
-        var list=d.bookings||[];
-        var el=document.getElementById('rezv');
-        if(el){
-          if(!list.length){el.innerHTML='<div class="empty">Veel broneeringuid pole.</div>';}
-          else{el.innerHTML=list.map(function(b){return '<div class="rez"><div><div class="rez-name">'+esc(b.name)+'</div><div class="rez-meta">'+esc(b.date)+' · '+esc(b.time)+' · '+esc(b.partySize)+' inimest</div></div><span class="rez-id">'+esc(b.id)+'</span></div>';}).join('');}
-        }
-        var st=document.getElementById('stat-total');if(st){st.textContent=list.length;}
-        var sd=document.getElementById('stat-today');if(sd){sd.textContent=list.filter(function(b){return b.date===today;}).length;}
+        allBookings=d.bookings||[];
+        renderCal();
+        var st=document.getElementById('stat-total');if(st){st.textContent=allBookings.length;}
+        var sd=document.getElementById('stat-today');if(sd){sd.textContent=allBookings.filter(function(b){return b.date===today;}).length;}
       }).catch(function(){});
     }
     loadRezv();setInterval(loadRezv,4000);
@@ -884,4 +964,5 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
 
 const PORT = process.env.PORT || 8080;
 await initPersistence(); // loads + hydrates from Postgres if DATABASE_URL is set
+backfillCallNames(); // name any older "Tundmatu" calls from their bookings
 app.listen(PORT, () => console.log(`Aino booking backend on :${PORT}`));
