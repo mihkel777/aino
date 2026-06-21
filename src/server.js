@@ -516,7 +516,7 @@ app.get("/", (_req, res) => {
 import Vapi from 'https://esm.sh/@vapi-ai/web';
 (function(){
   var PUBLIC_KEY=${JSON.stringify(publicKey)},ASSIST=${JSON.stringify(assistantId)};
-  var vapi=null,active=false,starting=false,asstLevel=0,asstRAF=null;
+  var vapi=null,active=false,starting=false,wasActive=false,asstLevel=0,asstRAF=null;
   var micStream=null,micCtx=null,micRAF=null;
   var btn=document.getElementById('call-btn'),statusEl=document.getElementById('call-status'),msgEl=document.getElementById('call-msg');
   var userBars=document.querySelectorAll('#user-viz .bar'),asstBars=document.querySelectorAll('#asst-viz .bar');
@@ -538,16 +538,23 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
   function ensureVapi(){
     if(vapi)return;
     vapi=new Vapi(PUBLIC_KEY);
-    vapi.on('call-start',function(){active=true;starting=false;setStatus('Kuulan sind',true);});
+    vapi.on('call-start',function(){active=true;starting=false;wasActive=true;if(msgEl){msgEl.textContent='';}setStatus('Kuulan sind',true);});
     vapi.on('speech-start',function(){setStatus(${JSON.stringify(restaurant.name)}+' räägib',true);});
     vapi.on('speech-end',function(){setStatus('Kuulan sind',true);});
     vapi.on('volume-level',function(l){asstLevel=typeof l==='number'?l:0;});
-    vapi.on('call-end',function(){cleanup();});
-    vapi.on('error',function(e){if(msgEl){msgEl.textContent='Viga kõnes. Proovi uuesti.';}cleanup();});
+    vapi.on('call-end',function(){if(msgEl){msgEl.textContent='';}cleanup();});
+    vapi.on('error',function(e){
+      // A call that already connected then errors = normal teardown (e.g. the
+      // assistant hung up). Only surface an error if the call never started.
+      if(wasActive){cleanup();return;}
+      if(msgEl){msgEl.textContent='Kõnet ei saanud alustada. Proovi uuesti.';}
+      cleanup();
+    });
   }
   function start(){
     if(active||starting)return;
     if(msgEl){msgEl.textContent='';}
+    wasActive=false;
     starting=true;btn.textContent='Lõpeta kõne';btn.classList.add('ending');setStatus('Ühendan...',false);
     try{ensureVapi();asstRAF=requestAnimationFrame(animateAsst);startUserMeter();var p=vapi.start(ASSIST);if(p&&p.catch){p.catch(function(e){if(msgEl){msgEl.textContent='Kõnet ei saanud alustada.';}cleanup();});}}
     catch(e){if(msgEl){msgEl.textContent='Kõnet ei saanud alustada: '+e.message;}cleanup();}
