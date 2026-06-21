@@ -879,7 +879,7 @@ import Vapi from 'https://esm.sh/@vapi-ai/web';
     function hm(t){var p=t.split(':');return parseInt(p[0],10)*60+parseInt(p[1],10);}
     function pad(n){return (n<10?'0':'')+n;}
     function fmtCalHead(ds){var d=new Date(ds+'T00:00:00');return DOW[d.getDay()]+', '+d.getDate()+'. '+MON[d.getMonth()];}
-    function shiftDate(ds,delta){var d=new Date(ds+'T00:00:00');d.setDate(d.getDate()+delta);return d.toISOString().slice(0,10);}
+    function shiftDate(ds,delta){var p=ds.split('-');var d=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));d.setUTCDate(d.getUTCDate()+delta);return d.toISOString().slice(0,10);}
     function renderCal(){
       var el=document.getElementById('cal');var dl=document.getElementById('cal-date');
       if(!el) return;
